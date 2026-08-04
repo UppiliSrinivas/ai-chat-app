@@ -1,0 +1,288 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.chat-card {
+  width: min(680px, 100%);
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6366f1;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.secondary-btn,
+.composer button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-btn {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.messages {
+  min-height: 320px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+
+.bubble {
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: #4f46e5;
+  color: #ffffff;
+  border-bottom-right-radius: 6px;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  border-bottom-left-radius: 6px;
+}
+
+.md-heading {
+  margin: 1rem 0 0.5rem 0;
+  font-weight: 600;
+}
+
+.md-h1 {
+  font-size: 1.8em;
+}
+
+.md-h2 {
+  font-size: 1.6em;
+}
+
+.md-h3 {
+  font-size: 1.4em;
+}
+
+.md-h4 {
+  font-size: 1.2em;
+}
+
+.md-h5,
+.md-h6 {
+  font-size: 1.1em;
+}
+
+.md-paragraph {
+  margin: 0.75rem 0;
+  line-height: 1.6;
+}
+
+.md-list {
+  margin: 0.75rem 0 0.75rem 1.5rem;
+  padding: 0;
+}
+
+.md-ordered {
+  list-style-type: decimal;
+}
+
+.md-list-item {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+.md-strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.md-em {
+  font-style: italic;
+  color: #4b5563;
+}
+
+.md-link {
+  color: #4f46e5;
+  text-decoration: none;
+  border-bottom: 1px solid #4f46e5;
+  transition: opacity 0.2s;
+}
+
+.md-link:hover {
+  opacity: 0.7;
+}
+
+.md-blockquote {
+  border-left: 3px solid #c7d2fe;
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+  color: #4b5563;
+  font-style: italic;
+}
+
+.md-hr {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin: 1rem 0;
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  border: 1px solid #e5e7eb;
+}
+
+.md-table th {
+  background: #f3f4f6;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #d1d5db;
+}
+
+.md-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.bubble.assistant :where(p, ul, ol, blockquote, pre) {
+  margin: 0 0 0.5rem;
+}
+
+.bubble.assistant :where(ul, ol) {
+  padding-left: 1.5rem;
+}
+
+.inline-code {
+  background: #1e1e1e;
+  color: #f9fafb;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.35rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.code-block-container {
+  margin: 1rem 0;
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: #1e1e1e;
+  border: 1px solid #333;
+}
+
+.code-block-header {
+  background: #2d2d2d;
+  color: #999;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-bottom: 1px solid #333;
+}
+
+.code-block {
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.code-block code {
+  color: #f9fafb;
+}
+
+.bubble.assistant :where(pre) {
+  margin: 0;
+}
+
+.bubble.assistant :where(blockquote) {
+  border-left: 3px solid #c7d2fe;
+  padding-left: 0.75rem;
+  color: #4b5563;
+}
+
+.bubble.loading {
+  font-style: italic;
+  color: #6b7280;
+}
+
+.composer {
+  display: flex;
+  gap: 10px;
+}
+
+.composer input {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.composer button {
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+@media (max-width: 600px) {
+  .chat-card {
+    padding: 16px;
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .composer {
+    flex-direction: column;
+  }
+
+  .bubble {
+    max-width: 100%;
+  }
+}
