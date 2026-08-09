@@ -20,6 +20,7 @@ pnpm-debug.log*
 
 # Local tooling config
 .claude/settings.local.json
+.superpowers/
 
 # Editor / OS
 .vscode/*
