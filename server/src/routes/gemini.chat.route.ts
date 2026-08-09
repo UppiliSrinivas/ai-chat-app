@@ -1,57 +1,81 @@
 import { Router } from "express";
-import { gemini } from "../config/gemini.js";
-import { log } from "node:console";
+import { env } from "../config/env.js";
+import { gemini, isGeminiConfigured } from "../config/gemini.js";
+import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request.js";
+import { toGeminiContents } from "../lib/history.js";
+import { streamSSE } from "../lib/sse.js";
+import { requireAuth } from "../middleware/requireAuth.js";
+import { Chat, isValidObjectId } from "../models/Chat.js";
 
 const router = Router();
 
+router.use(requireAuth);
+
+const MAX_TITLE_LENGTH = 60;
+
 router.post("/", async (req, res) => {
-  const { message } = req.body;
+  if (!isGeminiConfigured) {
+    res.status(503).json({ message: "GEMINI_API_KEY is not configured on the server." });
+    return;
+  }
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders?.();
+  const parsed = validateChatMessageRequest(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ message: parsed.error });
+    return;
+  }
 
-  // Track the real client disconnect on the response. Listening on `req` is a trap:
-  // since Node 16 it emits "close" as soon as the request body is fully read, which
-  // for a POST is immediately, ending the stream before a single chunk is written.
-  let clientGone = false;
-  res.on("close", () => {
-    clientGone = true;
-  });
+  const { chatId, message } = parsed.value;
 
-  try {
-    const streamResponse = await gemini.models.generateContentStream({
-      model: "gemini-3-flash-preview",
-      contents: message,
+  if (!isValidObjectId(chatId)) {
+    res.status(400).json({ message: "Invalid chatId." });
+    return;
+  }
+
+  // Scoped to userId, same reasoning as chats.route.ts: someone else's chat
+  // looks identical to a nonexistent one.
+  const chat = await Chat.findOne({ _id: chatId, userId: req.userId });
+  if (!chat) {
+    res.status(404).json({ message: "Chat not found." });
+    return;
+  }
+
+  const priorTurns: HistoryTurn[] = windowHistory(
+    chat.messages.map((entry) => ({ role: entry.role, content: entry.content })),
+  );
+
+  // Persisted before streaming starts so the user's message survives even
+  // if the model call fails outright, rather than living only in a response
+  // that never arrives.
+  chat.messages.push({ role: "user", content: message });
+  if (chat.title === "New chat" && chat.messages.length === 1) {
+    chat.title = message.slice(0, MAX_TITLE_LENGTH);
+  }
+  await chat.save();
+
+  const contents = toGeminiContents({ message, history: priorTurns });
+
+  let fullText = "";
+
+  await streamSSE(res, async function* (abortSignal) {
+    const stream = await gemini.models.generateContentStream({
+      model: env.geminiModel,
+      contents,
+      config: { abortSignal },
     });
 
-    for await (const chunk of streamResponse) {
-      if (clientGone) break;
-
+    for await (const chunk of stream) {
       const text = chunk.text ?? "";
-
-      log("Received chunk:", text); // Log the received chunk for debugging
-
-      if (!text) continue;
-
-      res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
+      fullText += text;
+      yield text;
     }
+  });
 
-    if (!clientGone) {
-      res.write("data: [DONE]\n\n");
-      res.end();
-    }
-  } catch (error) {
-    console.error(error);
-
-    if (!clientGone) {
-      const reason =
-        error instanceof Error ? error.message : "Something went wrong";
-
-      res.write(`event: error\ndata: ${JSON.stringify({ message: reason })}\n\n`);
-      res.end();
-    }
+  // Only persist an assistant turn if something actually came back — a
+  // transient failure with zero chunks shouldn't leave an empty message in
+  // the transcript. The user's message above is already saved either way.
+  if (fullText) {
+    await Chat.updateOne({ _id: chatId }, { $push: { messages: { role: "assistant", content: fullText } } });
   }
 });
 
