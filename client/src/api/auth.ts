@@ -18,10 +18,15 @@ export function loginAsGuest(): Promise<User> {
   return apiFetch<User>('/auth/anonymous', { method: 'POST' })
 }
 
-// No login wall: every visitor gets a working guest session immediately,
-// upgradeable to a real account later (not built yet).
-export async function ensureSession(): Promise<User> {
-  const existing = await getCurrentUser()
-  if (existing) return existing
-  return loginAsGuest()
+// `credential` is the ID token Google hands back to the client; the server
+// verifies it against Google's keys before trusting anything in it.
+export function loginWithGoogle(credential: string): Promise<User> {
+  return apiFetch<User>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  })
+}
+
+export function logout(): Promise<void> {
+  return apiFetch<void>('/auth/logout', { method: 'POST' })
 }
