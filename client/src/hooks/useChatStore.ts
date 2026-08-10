@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { streamChat } from '../api/streamChat'
-import { createChat } from '../api/chats'
-import { ensureSession, type User } from '../api/auth'
+import { createChat, deleteChat as deleteChatRequest, getChat, listChats, type ChatMessage, type ChatSummary } from '../api/chats'
 
 export type Turn = {
   id: string
@@ -12,7 +11,21 @@ export type Turn = {
 
 export const MAX_EDITS_PER_MESSAGE = 5
 
-type SessionStatus = 'idle' | 'loading' | 'ready'
+// The server stores one flat message list; edits/branches are a client-only
+// concept (see the NOTE in editMessage below), so a reload just pairs each
+// user message with the assistant reply that follows it.
+function messagesToTurns(messages: ChatMessage[]): Turn[] {
+  const turns: Turn[] = []
+  for (const message of messages) {
+    if (message.role === 'user') {
+      turns.push({ id: crypto.randomUUID(), edits: [message.content], responses: [''], activeEditIndex: 0 })
+    } else if (turns.length > 0) {
+      const lastTurn = turns[turns.length - 1]
+      lastTurn.responses[lastTurn.activeEditIndex] = message.content
+    }
+  }
+  return turns
+}
 
 type ChatState = {
   turns: Turn[]
@@ -20,30 +33,31 @@ type ChatState = {
   streamingTurnId: string | null
   error: string | null
   chatId: string | null
-  sessionStatus: SessionStatus
-  user: User | null
-  initSession: () => Promise<void>
+  chats: ChatSummary[]
+  isLoadingChat: boolean
   sendMessage: (content: string) => Promise<void>
   editMessage: (turnId: string, newContent: string) => Promise<void>
   navigateEdit: (turnId: string, direction: 'prev' | 'next') => void
   stopStreaming: () => void
+  loadChats: () => Promise<void>
+  selectChat: (chatId: string) => Promise<void>
+  startNewChat: () => void
+  deleteChat: (chatId: string) => Promise<void>
+  reset: () => void
 }
 
 let activeAbortController: AbortController | null = null
 
 export const useChatStore = create<ChatState>((set, get) => {
-  // Guest sessions are established lazily and idempotently here too, not
-  // just from App's mount effect — this makes the store correct even if a
-  // send happens before that effect has resolved.
+  // The chat is created on first send rather than on mount, so opening the
+  // app without saying anything doesn't litter empty chats in the database.
   const ensureChatId = async (): Promise<string> => {
     const existing = get().chatId
     if (existing) return existing
 
-    const user = await ensureSession()
-    set({ user, sessionStatus: 'ready' })
-
     const chat = await createChat()
     set({ chatId: chat.id })
+    get().loadChats()
     return chat.id
   }
 
@@ -76,6 +90,9 @@ export const useChatStore = create<ChatState>((set, get) => {
     } finally {
       if (activeAbortController === controller) activeAbortController = null
       set({ isStreaming: false, streamingTurnId: null })
+      // Refreshes title (server derives it from the first message) and
+      // moves this chat to the top of the sidebar's updatedAt ordering.
+      get().loadChats()
     }
   }
 
@@ -85,22 +102,8 @@ export const useChatStore = create<ChatState>((set, get) => {
     streamingTurnId: null,
     error: null,
     chatId: null,
-    sessionStatus: 'idle',
-    user: null,
-
-    // Fired once from App on mount purely so the guest session is warm
-    // before the user's first message — ensureChatId falls back to the
-    // same logic on its own if this hasn't finished yet.
-    initSession: async () => {
-      if (get().sessionStatus !== 'idle') return
-      set({ sessionStatus: 'loading' })
-      try {
-        const user = await ensureSession()
-        set({ user, sessionStatus: 'ready' })
-      } catch (err) {
-        set({ sessionStatus: 'ready', error: err instanceof Error ? err.message : 'Could not start a session' })
-      }
-    },
+    chats: [],
+    isLoadingChat: false,
 
     sendMessage: async (content) => {
       if (get().isStreaming) return
@@ -154,6 +157,44 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     stopStreaming: () => {
       activeAbortController?.abort()
+    },
+
+    loadChats: async () => {
+      const chats = await listChats()
+      set({ chats })
+    },
+
+    selectChat: async (chatId) => {
+      if (get().isStreaming || get().chatId === chatId) return
+      set({ isLoadingChat: true, error: null })
+      try {
+        const chat = await getChat(chatId)
+        set({ chatId: chat.id, turns: messagesToTurns(chat.messages) })
+      } catch (err) {
+        set({ error: err instanceof Error ? err.message : 'Could not load that chat' })
+      } finally {
+        set({ isLoadingChat: false })
+      }
+    },
+
+    startNewChat: () => {
+      if (get().isStreaming) return
+      set({ chatId: null, turns: [], error: null })
+    },
+
+    deleteChat: async (chatId) => {
+      await deleteChatRequest(chatId)
+      set((state) => ({
+        chats: state.chats.filter((chat) => chat.id !== chatId),
+        ...(state.chatId === chatId ? { chatId: null, turns: [] } : {}),
+      }))
+    },
+
+    // Called on sign-out so the next user never sees the previous one's
+    // messages still on screen.
+    reset: () => {
+      activeAbortController?.abort()
+      set({ turns: [], chatId: null, chats: [], error: null, isStreaming: false, streamingTurnId: null })
     },
   }
 })
