@@ -10,7 +10,8 @@ import { env, isMongoConfigured } from "./env.js";
  */
 export const connectMongo = async (): Promise<void> => {
   if (!isMongoConfigured) {
-    throw new Error("MONGODB_URI is not set. Set it in server/.env.");
+    const varName = env.nodeEnv === "production" ? "MONGODB_URI_PROD" : "MONGODB_URI_DEV";
+    throw new Error(`${varName} is not set. Set it in server/.env.`);
   }
 
   mongoose.connection.on("error", (error) => {

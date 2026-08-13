@@ -19,7 +19,7 @@ npx vitest run src/lib/chat-request.test.ts   # a single file
 npx vitest run -t "trims oldest turns"        # a single test by name
 ```
 
-`config/env.ts` loads `.env` from `process.cwd()` — start the server from `server/`. Boot fails fast if `GEMINI_API_KEY`, `MONGODB_URI`, or `JWT_SECRET` is unset, rather than failing on the first request.
+`config/env.ts` loads `.env` from `process.cwd()` — start the server from `server/`. Boot fails fast if `GEMINI_API_KEY`, the `NODE_ENV`-selected Mongo URI (`MONGODB_URI_DEV`/`MONGODB_URI_PROD`), or `JWT_SECRET` is unset, rather than failing on the first request.
 
 ### client/
 
@@ -34,16 +34,18 @@ npm run preview
 
 `server/.env` (gitignored; the tracked `.env.example` was deleted, so this is the only source of truth):
 
-| Var              | Default                  | Notes                                    |
-| ---------------- | ------------------------ | ----------------------------------------- |
-| `GEMINI_API_KEY` | —                        | Required; boot fails without it           |
-| `MONGODB_URI`    | —                        | Required; boot fails without it. 5s connect timeout, not the default 30s. |
-| `JWT_SECRET`     | —                        | Required; boot fails without it. Signs session cookies — treat like an API key. |
-| `JWT_EXPIRES_IN` | `7d`                     | Keep in sync with `sessionCookieOptions.maxAge` in `lib/auth.ts` |
-| `PORT`           | `5000`                   |                                            |
-| `CORS_ORIGIN`    | `http://localhost:5173`  | Comma-separated list                      |
-| `GEMINI_MODEL`   | `gemini-3-flash-preview` |                                            |
-| `NODE_ENV`       | `development`            | Sets the session cookie's `secure` flag   |
+| Var                 | Default                  | Notes                                    |
+| ------------------- | ------------------------ | ----------------------------------------- |
+| `GEMINI_API_KEY`    | —                        | Required; boot fails without it           |
+| `MONGODB_URI_DEV`   | —                        | Required when `NODE_ENV` is not `production`; boot fails without it. Points at the local `mongod`, keeping dev traffic off the production database. |
+| `MONGODB_URI_PROD`  | —                        | Required when `NODE_ENV=production`; boot fails without it. 5s connect timeout, not the default 30s. |
+| `JWT_SECRET`        | —                        | Required; boot fails without it. Signs session cookies — treat like an API key. |
+| `JWT_EXPIRES_IN`    | `7d`                     | Keep in sync with `sessionCookieOptions.maxAge` in `lib/auth.ts` |
+| `PORT`              | `5000`                   |                                            |
+| `CORS_ORIGIN_DEV`   | `http://localhost:5173`  | Comma-separated list. Used when `NODE_ENV` is not `production`. |
+| `CORS_ORIGIN_PROD`  | `http://localhost:5173`  | Comma-separated list. Used when `NODE_ENV=production` — the deployed frontend origin(s), e.g. the Vercel URL. |
+| `GEMINI_MODEL`      | `gemini-3-flash-preview` |                                            |
+| `NODE_ENV`          | `development`            | Sets the session cookie's `secure` flag, and picks the `_DEV`/`_PROD` suffix for `MONGODB_URI` and `CORS_ORIGIN` |
 
 CORS is pinned to an explicit allowlist — never widen to `"*"`, the server holds the API key and issues the session cookie. `credentials: true` lets that cookie travel cross-port to the dev client; safe only because the allowlist isn't a wildcard.
 
