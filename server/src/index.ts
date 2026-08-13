@@ -43,7 +43,8 @@ if (!isGeminiConfigured) {
   process.exit(1);
 }
 if (!isMongoConfigured) {
-  console.error("MONGODB_URI is not set. Set it in server/.env");
+  const varName = env.nodeEnv === "production" ? "MONGODB_URI_PROD" : "MONGODB_URI_DEV";
+  console.error(`${varName} is not set. Set it in server/.env`);
   process.exit(1);
 }
 if (!isAuthConfigured) {
