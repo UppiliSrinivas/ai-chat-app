@@ -15,7 +15,7 @@ npm start          # node dist/index.js (requires build first)
 npm run typecheck  # tsc --noEmit
 npm test           # vitest run
 npm run test:watch # vitest
-npx vitest run src/lib/chat-request.test.ts   # a single file
+npx vitest run src/lib/chat-request/chat-request.test.ts   # a single file
 npx vitest run -t "trims oldest turns"        # a single test by name
 ```
 
@@ -40,7 +40,7 @@ npm run preview
 | `MONGODB_URI_DEV`   | —                        | Required when `NODE_ENV` is not `production`; boot fails without it. Points at the local `mongod`, keeping dev traffic off the production database. |
 | `MONGODB_URI_PROD`  | —                        | Required when `NODE_ENV=production`; boot fails without it. 5s connect timeout, not the default 30s. |
 | `JWT_SECRET`        | —                        | Required; boot fails without it. Signs session cookies — treat like an API key. |
-| `JWT_EXPIRES_IN`    | `7d`                     | Keep in sync with `sessionCookieOptions.maxAge` in `lib/auth.ts` |
+| `JWT_EXPIRES_IN`    | `7d`                     | Keep in sync with `sessionCookieOptions.maxAge` in `lib/auth/auth.ts` |
 | `PORT`              | `5000`                   |                                            |
 | `CORS_ORIGIN_DEV`   | `http://localhost:5173`  | Comma-separated list. Used when `NODE_ENV` is not `production`. |
 | `CORS_ORIGIN_PROD`  | `http://localhost:5173`  | Comma-separated list. Used when `NODE_ENV=production` — the deployed frontend origin(s), e.g. the Vercel URL. |
@@ -55,14 +55,16 @@ Express 5 + TypeScript, ESM with `module: NodeNext`: relative imports carry a `.
 
 **Code comments: 1–3 lines, plain language, non-obvious only — same rule as `client/CLAUDE.md`, applies here too.**
 
+Each `lib/` module lives in its own folder alongside its test — `lib/sse/sse.ts` + `lib/sse/sse.test.ts`. Imports carry the full path (`../lib/sse/sse.js`); there is no barrel/`index.ts`, since `module: NodeNext` has no directory-index resolution and identical `index.ts` names make stack traces unreadable.
+
 A chat request flows through four stages, each in one place:
 
 1. **`routes/*.chat.route.ts`** — provider guard (503 if unconfigured), then delegates.
-2. **`lib/chat-request.ts`** — pure, provider-agnostic validation, run before `flushHeaders()` (the last point a real HTTP status can still be returned). Windows history to 80 turns / 120k chars, trimming oldest turns rather than rejecting.
-3. **`lib/history.ts`** — maps the request to Gemini `Content[]`; appends the current message here since the wire format's history is prior-turns-only. Gemini calls assistant turns `"model"`.
-4. **`lib/sse.ts`** — the single implementation of the streaming contract. Routes supply nothing but an async generator of text deltas.
+2. **`lib/chat-request/chat-request.ts`** — pure, provider-agnostic validation, run before `flushHeaders()` (the last point a real HTTP status can still be returned). Windows history to 80 turns / 120k chars, trimming oldest turns rather than rejecting.
+3. **`lib/history/history.ts`** — maps the request to Gemini `Content[]`; appends the current message here since the wire format's history is prior-turns-only. Gemini calls assistant turns `"model"`.
+4. **`lib/sse/sse.ts`** — the single implementation of the streaming contract. Routes supply nothing but an async generator of text deltas.
 
-### The SSE contract (`lib/sse.ts`)
+### The SSE contract (`lib/sse/sse.ts`)
 
 ```
 data: {"delta": "..."}      incremental text
@@ -83,7 +85,7 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 ### Auth and persistence
 
 - Users and chats live in MongoDB via Mongoose (`config/db.ts`, `models/User.ts`, `models/Chat.ts`).
-- Auth is a JWT in an httpOnly, sameSite=lax cookie (`lib/auth.ts`) — not a header token, so it's unreachable from JS even under XSS.
+- Auth is a JWT in an httpOnly, sameSite=lax cookie (`lib/auth/auth.ts`) — not a header token, so it's unreachable from JS even under XSS.
 - `middleware/requireAuth.ts` verifies the cookie and sets `req.userId`. Every query filters by `userId` directly rather than fetch-then-check, so another user's chat 404s instead of 403s — no ownership-enumeration signal.
 - `Chat` embeds its `messages` array instead of using a separate collection — the 80-turn/120k-char window keeps documents well under Mongo's 16MB cap, and embedding avoids a join. Revisit only if cross-chat search or per-message analytics become a real need.
 - `POST /gemini/chat` now requires auth and a `chatId` (`{ chatId, message }`, not `{ message, history }`) — history loads from Mongo server-side. Chat creation is a separate `POST /chats` REST call, kept out of the SSE contract on purpose.
@@ -91,8 +93,10 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 ## Current state
 
 - **README is stale** — still documents the removed OpenAI provider and `POST /openai/chat`. Only Gemini remains, and its contract just changed (see above).
-- **Client isn't updated for auth/persistence** — `useChatStore.ts` / `streamChat.ts` still send `{ message, history }` with no cookie, so they'll 400 then 401 against the current server. Needs: create/select a chat via `POST /chats`, send `{ chatId, message }`, and `fetch(..., { credentials: 'include' })`. No login/signup UI or chat list yet.
-- **No tests yet**, though vitest is wired up (`tsconfig.json` excludes `*.test.ts` from the build). `chat-request.ts`, `auth-request.ts`, and `history.ts` are pure — natural first targets.
+- **Tests are colocated with the code they cover** — on the server each `lib/` module owns a folder holding both files (`lib/sse/sse.ts` + `lib/sse/sse.test.ts`); the client keeps them side by side in the component's own folder. Neither uses a mirrored `tests/` tree, so moving or deleting a module takes its test along. Both packages run vitest (`npm test`); `tsconfig.json` excludes `*.test.ts` from the server build.
+  - Server: every `lib/` module is covered. `sse/sse.test.ts` drives `streamSSE` through a fake `Response` — it pins the disconnect-on-`res`-not-`req` behavior and the keepalive interval, both easy to regress.
+  - Client: `hooks/`, `api/`, and all components except `MarkdownContent`. See `client/CLAUDE.md` for the Testing Library conventions.
+  - **Untested by design:** routes, middleware, and models — they need a live Mongo/Express, so they're integration surface, not unit. No integration suite exists yet.
 - **No Vite proxy** — client calls the server's absolute origin, hence `5173` as the default CORS origin.
 
 ## Branches

@@ -1,5 +1,5 @@
 import type { Content } from "@google/genai";
-import type { ChatRequest, HistoryTurn } from "./chat-request.js";
+import type { ChatRequest, HistoryTurn } from "../chat-request/chat-request.js";
 
 /**
  * Turns a validated request into Gemini's conversation format.

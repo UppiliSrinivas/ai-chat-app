@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { User, type UserDoc } from "../models/User.js";
-import { validateCredentials } from "../lib/auth-request.js";
+import { validateCredentials } from "../lib/auth-request/auth-request.js";
 import {
   hashPassword,
   verifyPassword,
@@ -8,7 +8,7 @@ import {
   readSessionUserId,
   SESSION_COOKIE_NAME,
   sessionCookieOptions,
-} from "../lib/auth.js";
+} from "../lib/auth/auth.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();

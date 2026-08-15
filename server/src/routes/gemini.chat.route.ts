@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { env } from "../config/env.js";
 import { gemini, isGeminiConfigured } from "../config/gemini.js";
-import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request.js";
-import { toGeminiContents } from "../lib/history.js";
-import { streamSSE } from "../lib/sse.js";
+import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request/chat-request.js";
+import { toGeminiContents } from "../lib/history/history.js";
+import { streamSSE } from "../lib/sse/sse.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { Chat, isValidObjectId } from "../models/Chat.js";
 
