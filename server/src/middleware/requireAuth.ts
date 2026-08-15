@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { SESSION_COOKIE_NAME, readSessionUserId } from "../lib/auth.js";
+import { SESSION_COOKIE_NAME, readSessionUserId } from "../lib/auth/auth.js";
 
 // Augment Express's Request so downstream handlers get a typed req.userId
 // instead of everyone re-reading and re-verifying the cookie themselves.

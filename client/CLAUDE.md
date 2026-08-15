@@ -5,13 +5,27 @@ Vite + React 19 UI for the chat app. See the root `CLAUDE.md` for the server and
 ## Commands
 
 ```bash
-npm run dev      # vite, port 5173
+npm run dev        # vite, port 5173
 npm run build
-npm run lint     # oxlint (not eslint)
+npm run lint       # oxlint (not eslint)
 npm run preview
+npm test           # vitest run
+npm run test:watch # vitest
+npx vitest run src/hooks/useChatStore.test.ts   # a single file
+npx vitest run -t "sends on Enter"              # a single test by name
 ```
 
 Lint config lives in `.oxlintrc.json`, with `react/rules-of-hooks` as an error.
+
+## Tests
+
+Vitest + Testing Library in jsdom; config lives in `vite.config.js`'s `test` block, global setup in `src/test/setup.ts` (jest-dom matchers, auto-cleanup between tests).
+
+**Tests sit next to the file they cover** — `ChatSidebar.tsx` / `ChatSidebar.test.tsx` in the same folder, no mirrored `__tests__/` tree. Moving or deleting a component takes its test along.
+
+Query by accessible role/name (`getByRole('button', { name: 'Send message' })`) rather than test IDs or class names, so tests break when the UI stops being usable, not when markup is refactored. Component tests drive the UI through `userEvent`, not by poking state; store tests call actions on `useChatStore.getState()` with the `api/` modules mocked.
+
+`userEvent.setup()` installs its own working `navigator.clipboard` — assert copy behavior via `navigator.clipboard.readText()` rather than stubbing the global, which that setup would overwrite.
 
 ## Coding rules
 
@@ -51,8 +65,8 @@ Response is SSE, not JSON: multi-line `data:` fields, CRLF delimiters, events sp
 
 ## State of this directory
 
-Chat UI is built: `App.tsx` (react-router), `pages/chat`, `components/composser`, `components/message/*` (markdown + syntax-highlighted code via `react-markdown` / `highlight.js`), `hooks/useChatStore.ts` (Zustand), `api/streamChat.ts` (SSE parser). Earlier notes describing this directory as the stock Vite template are stale — ignore them.
+Chat UI is built: `App.tsx` (react-router), `pages/chat`, `pages/signin`, `components/composser`, `components/message/*` (markdown + syntax-highlighted code via `react-markdown` / `highlight.js`), `components/sidebar/ChatSidebar.tsx`, `hooks/useChatStore.ts` + `hooks/useAuthStore.ts` (Zustand), `api/streamChat.ts` (SSE parser). Earlier notes describing this directory as the stock Vite template are stale — ignore them.
 
-**Not built yet:** auth UI (login/signup), a chat list/sidebar, and rewiring `useChatStore.ts` / `streamChat.ts` to the `{ chatId, message }` + cookie contract above.
+Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. `useChatStore`, `useAuthStore`, both `api/` modules, and every component except `MarkdownContent` have colocated tests.
 
 All source is TypeScript; `tsconfig.json` exists.

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { env } from "../config/env.js";
+import { env } from "../../config/env.js";
 
 /**
  * Password hashing and session-token helpers. Kept separate from the routes
