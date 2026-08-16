@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { isGoogleConfigured } from "../config/env.js";
 import { User, type UserDoc } from "../models/User.js";
 import { validateCredentials } from "../lib/auth-request/auth-request.js";
+import { readGoogleCredential, verifyGoogleCredential } from "../lib/google-auth/google-auth.js";
 import {
   hashPassword,
   verifyPassword,
@@ -109,6 +111,67 @@ router.post("/anonymous", async (_req, res) => {
   const token = signSessionToken({ userId: user.id });
   res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
   res.status(201).json(toUserResponse(user));
+});
+
+// Takes the ID token @react-oauth/google returns in its `credential` field.
+// That token is verified against Google's public keys rather than decoded —
+// decoding alone would let anyone forge a payload claiming any email.
+router.post("/google", async (req, res) => {
+  // Same 503-not-500 stance as the Gemini routes: an unconfigured provider is
+  // a server problem, and the client can fall back to another sign-in method.
+  if (!isGoogleConfigured) {
+    res.status(503).json({ message: "Google sign-in is not configured on the server." });
+    return;
+  }
+
+  const parsed = readGoogleCredential(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ message: parsed.error });
+    return;
+  }
+
+  const verified = await verifyGoogleCredential(parsed.value);
+  if (!verified.ok) {
+    res.status(401).json({ message: verified.error });
+    return;
+  }
+
+  const { googleId, email } = verified.value;
+
+  let user: (UserDoc & { id: string }) | null = await User.findOne({ googleId });
+
+  if (!user) {
+    // A password account on the same address gets linked rather than colliding
+    // with the unique email index. Safe only because email_verified was
+    // checked above — Google confirmed this person owns the address.
+    const byEmail = await User.findOne({ email });
+    if (byEmail) {
+      byEmail.googleId = googleId;
+      await byEmail.save();
+      user = byEmail;
+    }
+  }
+
+  if (!user) {
+    // Same guest-upgrade rule as /signup: a guest session becomes this account
+    // in place so its chats carry over, but a real session is never replaced.
+    const sessionUserId = readSessionUserId(req.cookies?.[SESSION_COOKIE_NAME]);
+    const guest = sessionUserId ? await User.findOne({ _id: sessionUserId, isAnonymous: true }) : null;
+
+    if (guest) {
+      guest.googleId = googleId;
+      guest.email = email;
+      guest.isAnonymous = false;
+      await guest.save();
+      user = guest;
+    } else {
+      user = await User.create({ googleId, email, isAnonymous: false });
+    }
+  }
+
+  const token = signSessionToken({ userId: user.id });
+  res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
+  res.json(toUserResponse(user));
 });
 
 router.post("/logout", (_req, res) => {
