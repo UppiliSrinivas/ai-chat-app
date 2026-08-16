@@ -53,13 +53,41 @@ describe('ChatSidebar', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('deletes a chat without also selecting it', async () => {
+  it('deletes a chat without also selecting it, once confirmed', async () => {
     const { onDelete, onSelect, user } = setup()
 
-    await user.click(screen.getAllByRole('button', { name: 'Delete chat' })[0])
+    await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm delete "First chat"' }))
 
     expect(onDelete).toHaveBeenCalledExactlyOnceWith('a')
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('does not delete on the first click alone', async () => {
+    const { onDelete, user } = setup()
+
+    await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Confirm delete "First chat"' })).toBeInTheDocument()
+  })
+
+  // Arming one row and clicking away must not leave a second row primed to
+  // delete on a single click.
+  it('disarms the confirm when focus moves elsewhere', async () => {
+    const { onDelete, user } = setup()
+
+    await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+    await user.click(screen.getByRole('button', { name: 'Delete "Second chat"' }))
+
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete "First chat"' })).toBeInTheDocument()
+  })
+
+  it('hides the drawer from keyboard users while closed on mobile', () => {
+    setup({ isOpen: false })
+
+    expect(screen.getByRole('complementary', { hidden: true })).toHaveAttribute('inert')
   })
 
   it('closes when the backdrop is clicked', async () => {

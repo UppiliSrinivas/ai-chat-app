@@ -73,12 +73,7 @@ describe("verifyGoogleCredential", () => {
 
     expect(await verifyGoogleCredential("token")).toEqual({
       ok: true,
-      value: {
-        googleId: validPayload.sub,
-        email: "person@example.com",
-        name: "A Person",
-        picture: "https://example.com/avatar.png",
-      },
+      value: { googleId: validPayload.sub, email: "person@example.com" },
     });
   });
 
@@ -117,12 +112,14 @@ describe("verifyGoogleCredential", () => {
     expect(await verifyGoogleCredential("token")).toEqual({ ok: false, error: "Google sign-in failed." });
   });
 
-  it("defaults optional profile fields to null", async () => {
+  // Google sends name/picture on most tokens; the profile deliberately drops
+  // them, so a token without them is still perfectly valid here.
+  it("ignores profile fields the app doesn't store", async () => {
     verifyIdToken.mockResolvedValue(ticketFor({ ...validPayload, name: undefined, picture: undefined }));
 
     expect(await verifyGoogleCredential("token")).toEqual({
       ok: true,
-      value: { googleId: validPayload.sub, email: "person@example.com", name: null, picture: null },
+      value: { googleId: validPayload.sub, email: "person@example.com" },
     });
   });
 });

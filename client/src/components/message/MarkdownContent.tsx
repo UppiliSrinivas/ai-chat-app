@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { ComponentProps } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import hljs from 'highlight.js'
 import { Check, Copy } from 'lucide-react'
+import { highlightCode } from '../../lib/highlight'
 import 'highlight.js/styles/github-dark.css'
 
 type MarkdownContentProps = {
@@ -11,13 +11,6 @@ type MarkdownContentProps = {
 }
 
 const COPIED_RESET_DELAY_MS = 1500
-
-function highlight(code: string, language?: string) {
-  if (language && hljs.getLanguage(language)) {
-    return hljs.highlight(code, { language }).value
-  }
-  return hljs.highlightAuto(code).value
-}
 
 function CodeBlock({ className, children }: ComponentProps<'code'>) {
   const [copied, setCopied] = useState(false)
@@ -44,7 +37,7 @@ function CodeBlock({ className, children }: ComponentProps<'code'>) {
       <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 text-[13px] leading-6">
         <code
           className={`hljs language-${language ?? 'plaintext'}`}
-          dangerouslySetInnerHTML={{ __html: highlight(code, language) }}
+          dangerouslySetInnerHTML={{ __html: highlightCode(code, language) }}
         />
       </pre>
       <button

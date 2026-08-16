@@ -14,8 +14,6 @@ export const MAX_CREDENTIAL_LENGTH = 4096;
 export interface GoogleProfile {
   googleId: string;
   email: string;
-  name: string | null;
-  picture: string | null;
 }
 
 export type CredentialResult = { ok: true; value: string } | { ok: false; error: string };
@@ -78,8 +76,6 @@ export const verifyGoogleCredential = async (credential: string): Promise<Google
     value: {
       googleId: payload.sub,
       email: payload.email.trim().toLowerCase(),
-      name: payload.name ?? null,
-      picture: payload.picture ?? null,
     },
   };
 };

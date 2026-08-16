@@ -1,6 +1,8 @@
-import { LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
+import { useState } from 'react'
+import { Check, LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
 import type { User } from '../../api/auth'
 import type { ChatSummary } from '../../api/chats'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 
 export type ChatSidebarProps = {
   chats: ChatSummary[]
@@ -27,6 +29,16 @@ export default function ChatSidebar({
   onSignOut,
   onUpgrade,
 }: ChatSidebarProps) {
+  // Deleting is destructive and the server has no undo, so the trash icon
+  // arms a confirm button instead of firing straight away.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  // Off-screen but still in the DOM on mobile, so its buttons stay tab-
+  // reachable without this. Desktop always shows it, hence the width check —
+  // `inert` is an attribute, so no `md:` class can undo it.
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const isHidden = !isDesktop && !isOpen
+
   const handleSelect = (chatId: string) => {
     onSelect(chatId)
     onClose()
@@ -37,6 +49,15 @@ export default function ChatSidebar({
     onClose()
   }
 
+  const handleDelete = (chatId: string) => {
+    if (pendingDeleteId !== chatId) {
+      setPendingDeleteId(chatId)
+      return
+    }
+    setPendingDeleteId(null)
+    onDelete(chatId)
+  }
+
   return (
     <>
       {isOpen && (
@@ -44,6 +65,7 @@ export default function ChatSidebar({
       )}
 
       <aside
+        inert={isHidden}
         className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center gap-2 p-3">
@@ -82,12 +104,17 @@ export default function ChatSidebar({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation()
-                  onDelete(chat.id)
+                  handleDelete(chat.id)
                 }}
-                aria-label="Delete chat"
-                className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover:opacity-100"
+                onBlur={() => setPendingDeleteId((id) => (id === chat.id ? null : id))}
+                aria-label={pendingDeleteId === chat.id ? `Confirm delete "${chat.title}"` : `Delete "${chat.title}"`}
+                className={`absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full hover:bg-zinc-700 ${
+                  pendingDeleteId === chat.id
+                    ? 'text-red-400 opacity-100'
+                    : 'text-zinc-500 opacity-0 hover:text-zinc-100 group-hover:opacity-100'
+                }`}
               >
-                <Trash2 size={14} />
+                {pendingDeleteId === chat.id ? <Check size={14} /> : <Trash2 size={14} />}
               </button>
             </div>
           ))}

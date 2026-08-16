@@ -50,6 +50,8 @@ npm run preview
 
 CORS is pinned to an explicit allowlist — never widen to `"*"`, the server holds the API key and issues the session cookie. `credentials: true` lets that cookie travel cross-port to the dev client; safe only because the allowlist isn't a wildcard.
 
+**In production the client must reach the API same-origin.** The session cookie is `sameSite=lax`, so a browser won't attach it to genuinely cross-site requests — pointing the deployed client straight at the Render URL breaks auth in a way that looks like a backend bug (sign-in succeeds, every later call 401s). `client/vercel.json` rewrites `/api/*` to Render for exactly this reason, and the client's `VITE_API_BASE_URL` must be `/api`. Don't remove the rewrite.
+
 ## Architecture
 
 Express 5 + TypeScript, ESM with `module: NodeNext`: relative imports carry a `.js` extension even though the sources are `.ts` (`import { env } from "./config/env.js"`).
@@ -92,9 +94,16 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - `POST /gemini/chat` now requires auth and a `chatId` (`{ chatId, message }`, not `{ message, history }`) — history loads from Mongo server-side. Chat creation is a separate `POST /chats` REST call, kept out of the SSE contract on purpose.
 - `POST /auth/google` takes the ID token from `@react-oauth/google` and verifies it via `lib/google-auth/` — never decode it, an unverified decode accepts any forged payload. Identity is keyed on Google's `sub` (`User.googleId`), not the email, since an account's address can change. A verified email matching an existing password account links the two rather than colliding with the unique email index.
 
+### Hardening
+
+- **Rate limits** (`middleware/rateLimit.ts`) — sign-in routes are capped per IP, `/gemini/chat` per `userId` so one NAT doesn't share a budget. Both endpoints cost real money or storage and neither is protected by CORS, which only constrains browsers.
+- **`trust proxy` is `1` in production, `false` otherwise.** Render terminates TLS at a proxy, so without it every client shares the proxy's IP and the limiter is useless. Never set it to `true` — that trusts a spoofable `X-Forwarded-For`, and express-rate-limit rejects it.
+- **`middleware/errorHandler.ts` is the last `app.use`.** Express 5 forwards async rejections there; without it they hit Express's default handler, which returns the stack trace whenever `NODE_ENV` isn't production. It also maps Mongo's duplicate-key (11000) to a 409, and re-throws once headers are sent so a half-written SSE stream still dies cleanly.
+- **`SIGTERM`/`SIGINT` drain in-flight requests** before exit, with a 10s backstop. Render sends `SIGTERM` on every deploy, and an open SSE stream would otherwise be severed mid-response.
+
 ## Current state
 
-- **README is stale** — still documents the removed OpenAI provider and `POST /openai/chat`. Only Gemini remains, and its contract just changed (see above).
+- **`highlight.js` is a curated build** (`client/src/lib/highlight.ts`) — `lib/core` plus ~25 registered languages, not the default entrypoint, which bundles all 384. Add a language there rather than switching the import back.
 - **Tests are colocated with the code they cover** — on the server each `lib/` module owns a folder holding both files (`lib/sse/sse.ts` + `lib/sse/sse.test.ts`); the client keeps them side by side in the component's own folder. Neither uses a mirrored `tests/` tree, so moving or deleting a module takes its test along. Both packages run vitest (`npm test`); `tsconfig.json` excludes `*.test.ts` from the server build.
   - Server: every `lib/` module is covered. `sse/sse.test.ts` drives `streamSSE` through a fake `Response` — it pins the disconnect-on-`res`-not-`req` behavior and the keepalive interval, both easy to regress.
   - Client: `hooks/`, `api/`, and all components except `MarkdownContent`. See `client/CLAUDE.md` for the Testing Library conventions.

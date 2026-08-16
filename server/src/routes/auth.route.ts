@@ -12,8 +12,13 @@ import {
   sessionCookieOptions,
 } from "../lib/auth/auth.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { authLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
+
+// Throttles every sign-in route below. /me is a plain read and stays exempt —
+// the client polls it on each load to decide what to render.
+router.post("*splat", authLimiter);
 
 // Shared shape for every route that returns a user, so the client sees the
 // same fields regardless of which auth method created it.

@@ -19,7 +19,7 @@ Lint config lives in `.oxlintrc.json`, with `react/rules-of-hooks` as an error.
 
 ## Tests
 
-Vitest + Testing Library in jsdom; config lives in `vite.config.js`'s `test` block, global setup in `src/test/setup.ts` (jest-dom matchers, auto-cleanup between tests).
+Vitest + Testing Library in jsdom; config lives in `vite.config.js`'s `test` block, global setup in `src/test/setup.ts` (jest-dom matchers, auto-cleanup, and a `matchMedia` stub — jsdom has none, so anything using `useMediaQuery` throws without it).
 
 **Tests sit next to the file they cover** — `ChatSidebar.tsx` / `ChatSidebar.test.tsx` in the same folder, no mirrored `__tests__/` tree. Moving or deleting a component takes its test along.
 
@@ -51,13 +51,17 @@ Query by accessible role/name (`getByRole('button', { name: 'Send message' })`) 
 
 **Folder structure stays clean.** `components/` for UI, `hooks/` for shared stateful logic, `lib/`/`api/` for pure helpers with no React import. Delete leftover scaffolding rather than leaving it in the tree.
 
+**Syntax highlighting is a curated build.** `lib/highlight.ts` registers ~25 languages onto `highlight.js/lib/core`; importing the default `highlight.js` entrypoint instead pulls all 384 and roughly doubles the bundle. Add languages to that list.
+
 **Components are reusable and presentational**, driven by props — no reaching for global state or fetching their own data. Push data loading/streaming to a hook or the top of the tree; split any component that's grown a second responsibility.
 
 ## Talking to the server
 
 No Vite proxy — requests go to the server's absolute origin (`http://localhost:5000` by default), which is why `5173` is the server's default CORS origin. Changing the client's dev port means updating `CORS_ORIGIN` in `server/.env`.
 
-Auth is a session cookie, not a header — every fetch needs `credentials: 'include'`. Sign up / log in via `POST /auth/signup` or `/auth/login`.
+Auth is a session cookie, not a header — every fetch needs `credentials: 'include'` (`api/client.ts` sets it once for all callers). Sign up / log in via `POST /auth/signup` or `/auth/login`.
+
+In production `VITE_API_BASE_URL` must be `/api`, which `vercel.json` rewrites to the Render origin. A cross-site base URL silently breaks auth — `sameSite=lax` means the browser won't send the cookie at all.
 
 `POST /gemini/chat` takes `{ chatId, message }`, **not** `{ message, history }` — create or select a chat via `POST /chats` first; the server owns history now.
 

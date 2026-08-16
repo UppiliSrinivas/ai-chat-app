@@ -5,11 +5,13 @@ import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../
 import { toGeminiContents } from "../lib/history/history.js";
 import { streamSSE } from "../lib/sse/sse.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { chatLimiter } from "../middleware/rateLimit.js";
 import { Chat, isValidObjectId } from "../models/Chat.js";
 
 const router = Router();
 
-router.use(requireAuth);
+// requireAuth first so the limiter can key on req.userId rather than the IP.
+router.use(requireAuth, chatLimiter);
 
 const MAX_TITLE_LENGTH = 60;
 

@@ -159,9 +159,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeAbortController?.abort()
     },
 
+    // Swallows its own failure rather than surfacing one: the sidebar is
+    // secondary to the conversation, and this runs on mount and after every
+    // stream, so a blip here shouldn't overwrite a real chat error.
     loadChats: async () => {
-      const chats = await listChats()
-      set({ chats })
+      try {
+        const chats = await listChats()
+        set({ chats })
+      } catch {
+        // Keep whatever list is already on screen.
+      }
     },
 
     selectChat: async (chatId) => {
@@ -183,7 +190,12 @@ export const useChatStore = create<ChatState>((set, get) => {
     },
 
     deleteChat: async (chatId) => {
-      await deleteChatRequest(chatId)
+      try {
+        await deleteChatRequest(chatId)
+      } catch (err) {
+        set({ error: err instanceof Error ? err.message : 'Could not delete that chat' })
+        return
+      }
       set((state) => ({
         chats: state.chats.filter((chat) => chat.id !== chatId),
         ...(state.chatId === chatId ? { chatId: null, turns: [] } : {}),
