@@ -3,6 +3,7 @@ import { Menu } from 'lucide-react'
 import Composer from '../../components/composser'
 import Message from '../../components/message'
 import ChatSidebar from '../../components/sidebar/ChatSidebar'
+import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
 
 export default function ChatPage() {
@@ -20,6 +21,9 @@ export default function ChatPage() {
     const selectChat = useChatStore((state) => state.selectChat)
     const startNewChat = useChatStore((state) => state.startNewChat)
     const deleteChat = useChatStore((state) => state.deleteChat)
+    const user = useAuthStore((state) => state.user)
+    const signOut = useAuthStore((state) => state.signOut)
+    const startUpgrade = useAuthStore((state) => state.startUpgrade)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
     const bottomRef = useRef<HTMLDivElement>(null)
@@ -46,6 +50,9 @@ export default function ChatPage() {
                 onSelect={selectChat}
                 onNewChat={startNewChat}
                 onDelete={deleteChat}
+                user={user}
+                onSignOut={signOut}
+                onUpgrade={startUpgrade}
             />
 
             <div className="relative flex-1">

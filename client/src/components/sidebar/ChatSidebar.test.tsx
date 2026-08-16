@@ -14,8 +14,10 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
     onSelect: vi.fn(),
     onNewChat: vi.fn(),
     onDelete: vi.fn(),
+    onSignOut: vi.fn(),
+    onUpgrade: vi.fn(),
   }
-  render(<ChatSidebar chats={chats} activeChatId={null} isOpen={false} {...handlers} {...props} />)
+  render(<ChatSidebar chats={chats} activeChatId={null} isOpen={false} user={null} {...handlers} {...props} />)
   return { ...handlers, user: userEvent.setup() }
 }
 
@@ -72,5 +74,38 @@ describe('ChatSidebar', () => {
     setup({ isOpen: false })
 
     expect(document.querySelector('div[aria-hidden="true"]')).toBeNull()
+  })
+
+  it('signs a real account out', async () => {
+    const account = { id: '1', email: 'person@example.com', isAnonymous: false }
+    const { onSignOut, user } = setup({ user: account })
+
+    await user.click(screen.getByRole('button', { name: /Sign out/ }))
+
+    expect(onSignOut).toHaveBeenCalledOnce()
+  })
+
+  // Signing a guest out would strand their chats — the cookie is their only
+  // identity — so they get the upgrade path instead.
+  it('offers a guest the upgrade instead of sign out', async () => {
+    const guest = { id: '1', email: null, isAnonymous: true }
+    const { onUpgrade, user } = setup({ user: guest })
+
+    expect(screen.queryByRole('button', { name: /Sign out/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Sign in to save chats/ }))
+
+    expect(onUpgrade).toHaveBeenCalledOnce()
+  })
+
+  it('labels the account by email', () => {
+    setup({ user: { id: '1', email: 'person@example.com', isAnonymous: false } })
+
+    expect(screen.getByText('person@example.com')).toBeInTheDocument()
+  })
+
+  it('labels an anonymous account as Guest', () => {
+    setup({ user: { id: '1', email: null, isAnonymous: true } })
+
+    expect(screen.getByText('Guest')).toBeInTheDocument()
   })
 })
