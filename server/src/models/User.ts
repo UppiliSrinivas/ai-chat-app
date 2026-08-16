@@ -1,9 +1,10 @@
 import { Schema, model, type InferSchemaType } from "mongoose";
 
 /**
- * A user is either anonymous or has a password — `email`/`passwordHash`
- * are optional so an anonymous document can omit both. `sparse` lets
- * multiple documents omit `email` without tripping its unique index.
+ * A user is anonymous, has a password, is linked to a Google account, or some
+ * combination — every identifying field is optional so an anonymous document
+ * can omit all of them. `sparse` lets multiple documents omit an indexed field
+ * without tripping its unique index.
  */
 const userSchema = new Schema(
   {
@@ -16,6 +17,13 @@ const userSchema = new Schema(
     },
     passwordHash: {
       type: String,
+    },
+    // Google's `sub` claim, not the email: an account's address can change,
+    // this identifier never does.
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
     isAnonymous: {
       type: Boolean,

@@ -46,7 +46,17 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET ?? "",
 
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
+
+  /** OAuth client ID the browser signs in with. Not a secret — it ships inside
+   *  the client bundle — but every Google ID token is checked against it as the
+   *  `aud` claim, so a wrong value rejects every sign-in. Must match the
+   *  client's VITE_GOOGLE_CLIENT_ID exactly. */
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
 } as const;
 
 export const isMongoConfigured = env.mongoUri.length > 0;
 export const isAuthConfigured = env.jwtSecret.length > 0;
+
+/** Optional, unlike Mongo and JWT: email/password and guest sign-in still work
+ *  without it, so the route answers 503 rather than boot failing. */
+export const isGoogleConfigured = env.googleClientId.length > 0;
