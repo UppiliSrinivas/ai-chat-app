@@ -1,24 +1,31 @@
-import { Plus, Trash2, X } from 'lucide-react'
+import { LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
+import type { User } from '../../api/auth'
 import type { ChatSummary } from '../../api/chats'
 
 export type ChatSidebarProps = {
   chats: ChatSummary[]
   activeChatId: string | null
   isOpen: boolean
+  user: User | null
   onClose: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
   onDelete: (chatId: string) => void
+  onSignOut: () => void
+  onUpgrade: () => void
 }
 
 export default function ChatSidebar({
   chats,
   activeChatId,
   isOpen,
+  user,
   onClose,
   onSelect,
   onNewChat,
   onDelete,
+  onSignOut,
+  onUpgrade,
 }: ChatSidebarProps) {
   const handleSelect = (chatId: string) => {
     onSelect(chatId)
@@ -85,6 +92,31 @@ export default function ChatSidebar({
             </div>
           ))}
         </nav>
+
+        <div className="border-t border-zinc-800 p-3">
+          <p className="truncate px-1 pb-2 text-xs text-zinc-500">{user?.email ?? 'Guest'}</p>
+          {/* A guest's only identity is the session cookie, so signing out would
+              strand their chats with no way back in. Offer the upgrade instead. */}
+          {user?.isAnonymous ? (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+            >
+              <LogIn size={16} />
+              Sign in to save chats
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+            >
+              <LogOut size={16} />
+              Sign out
+            </button>
+          )}
+        </div>
       </aside>
     </>
   )

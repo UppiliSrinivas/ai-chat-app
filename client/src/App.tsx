@@ -7,6 +7,7 @@ import { useChatStore } from './hooks/useChatStore'
 
 export default function App() {
   const status = useAuthStore((state) => state.status)
+  const isUpgrading = useAuthStore((state) => state.isUpgrading)
   const checkSession = useAuthStore((state) => state.checkSession)
 
   useEffect(() => {
@@ -23,7 +24,10 @@ export default function App() {
   // never sees the sign-in page flash before the redirect.
   if (status === 'checking') return <div className="min-h-svh bg-black" />
 
-  if (status === 'signedOut') return <SignInPage />
+  // A guest mid-upgrade still holds a valid session, so this is deliberately
+  // not a signed-out check — the cookie must survive for the server to link
+  // the new identity to their existing chats.
+  if (status === 'signedOut' || isUpgrading) return <SignInPage />
 
   return (
     <BrowserRouter>
