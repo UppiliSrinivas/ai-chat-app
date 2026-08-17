@@ -19,6 +19,21 @@ if (!window.matchMedia) {
     }) as unknown as MediaQueryList
 }
 
+// jsdom has no ResizeObserver either. It never reports a resize here, so
+// components keep whatever initial size they defaulted to — which is all the
+// sign-in page needs to render its Google button.
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class {
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
+  }
+}
+
+// jsdom implements no scrolling, so the chat page's scroll-to-bottom effect
+// throws without this.
+Element.prototype.scrollIntoView = vi.fn()
+
 afterEach(() => {
   cleanup()
 })
