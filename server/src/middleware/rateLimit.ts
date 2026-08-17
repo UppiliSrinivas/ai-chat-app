@@ -24,9 +24,9 @@ export const authLimiter = rateLimit({
 // Keyed on the signed-in user rather than the IP, so one office or NAT
 // doesn't share a single budget. Mounted after requireAuth, so req.userId is
 // always set; the IP fallback only matters if that order ever changes.
-// ipKeyGenerator normalises IPv6 into a /64 subnet — a single client can
+// ipKeyGenerator normalises IPv6 down to its subnet — a single client can
 // otherwise rotate through addresses in its own prefix to reset the counter.
-const chatKey = (req: Request): string => req.userId ?? ipKeyGenerator(req.ip ?? "");
+export const chatKey = (req: Request): string => req.userId ?? ipKeyGenerator(req.ip ?? "");
 
 export const chatLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
