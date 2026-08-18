@@ -106,8 +106,11 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - **`highlight.js` is a curated build** (`client/src/lib/highlight.ts`) — `lib/core` plus ~25 registered languages, not the default entrypoint, which bundles all 384. Add a language there rather than switching the import back.
 - **Tests are colocated with the code they cover** — on the server each `lib/` module owns a folder holding both files (`lib/sse/sse.ts` + `lib/sse/sse.test.ts`); the client keeps them side by side in the component's own folder. Neither uses a mirrored `tests/` tree, so moving or deleting a module takes its test along. Both packages run vitest (`npm test`); `tsconfig.json` excludes `*.test.ts` from the server build.
   - Server: every `lib/` module is covered. `sse/sse.test.ts` drives `streamSSE` through a fake `Response` — it pins the disconnect-on-`res`-not-`req` behavior and the keepalive interval, both easy to regress.
-  - Client: `hooks/`, `api/`, and all components except `MarkdownContent`. See `client/CLAUDE.md` for the Testing Library conventions.
-  - **Untested by design:** routes, middleware, and models — they need a live Mongo/Express, so they're integration surface, not unit. No integration suite exists yet.
+  - Client: `hooks/`, `api/`, every component, `App.tsx`, and both pages. See `client/CLAUDE.md` for the Testing Library conventions.
+  - Middleware and models are covered too — Mongoose validates a document without a connection, and the middleware take plain fake `req`/`res` objects, so neither needs a live database.
+  - **Untested:** the three route files. Driving them needs `supertest` to dispatch through Express, which isn't installed — they're the whole reason server coverage sits below the 80% threshold.
+- **Coverage thresholds are enforced, not advisory** — 80% across statements/branches/functions/lines fails `npm run test:coverage` in both packages. `index.ts`, `app.ts`, and `config/db.ts` are excluded as boot wiring; the client excludes `main.tsx`.
+- **`app.ts` holds the Express app, `index.ts` only boots it** — the split exists so routes can be tested without binding a port, and it's also what a serverless host would need.
 - **No Vite proxy** — client calls the server's absolute origin, hence `5173` as the default CORS origin.
 
 ## Branches
