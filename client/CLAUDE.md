@@ -71,6 +71,6 @@ Response is SSE, not JSON: multi-line `data:` fields, CRLF delimiters, events sp
 
 Chat UI is built: `App.tsx` (react-router), `pages/chat`, `pages/signin`, `components/composser`, `components/message/*` (markdown + syntax-highlighted code via `react-markdown` / `highlight.js`), `components/sidebar/ChatSidebar.tsx`, `hooks/useChatStore.ts` + `hooks/useAuthStore.ts` (Zustand), `api/streamChat.ts` (SSE parser). Earlier notes describing this directory as the stock Vite template are stale — ignore them.
 
-Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. `useChatStore`, `useAuthStore`, both `api/` modules, and every component except `MarkdownContent` have colocated tests.
+Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. Everything has colocated tests — both stores, all three `api/` modules, every component, `App.tsx`, and both pages.
 
 All source is TypeScript; `tsconfig.json` exists.
