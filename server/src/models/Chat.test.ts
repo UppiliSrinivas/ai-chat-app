@@ -55,6 +55,27 @@ describe("Chat schema", () => {
 
     expect(chat.messages[0]).not.toHaveProperty("_id");
   });
+
+  // A chat with no projectId is standalone. Defaulting to null rather than
+  // leaving it undefined means the client always gets the field back.
+  it("defaults projectId to null so a chat is standalone", () => {
+    const chat = new Chat({ userId });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.projectId).toBeNull();
+  });
+
+  it("accepts a chat assigned to a project", () => {
+    const projectId = new Types.ObjectId();
+    const chat = new Chat({ userId, projectId });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.projectId?.toString()).toBe(projectId.toString());
+  });
+
+  it("indexes projectId, since the project view filters on it", () => {
+    expect(Chat.schema.path("projectId").options.index).toBe(true);
+  });
 });
 
 describe("isValidObjectId", () => {
