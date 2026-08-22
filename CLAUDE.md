@@ -93,6 +93,7 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - `Chat` embeds its `messages` array instead of using a separate collection — the 80-turn/120k-char window keeps documents well under Mongo's 16MB cap, and embedding avoids a join. Revisit only if cross-chat search or per-message analytics become a real need.
 - `POST /gemini/chat` now requires auth and a `chatId` (`{ chatId, message }`, not `{ message, history }`) — history loads from Mongo server-side. Chat creation is a separate `POST /chats` REST call, kept out of the SSE contract on purpose.
 - `POST /auth/google` takes the ID token from `@react-oauth/google` and verifies it via `lib/google-auth/` — never decode it, an unverified decode accepts any forged payload. Identity is keyed on Google's `sub` (`User.googleId`), not the email, since an account's address can change. A verified email matching an existing password account links the two rather than colliding with the unique email index.
+- `Project` is an optional grouping: `Chat.projectId` is nullable, so a chat with no project is standalone and no migration was needed. `DELETE /projects/:id` deletes the project and its own chats — both queries scoped by `userId`, so another project's chats are never touched.
 
 ### Hardening
 
