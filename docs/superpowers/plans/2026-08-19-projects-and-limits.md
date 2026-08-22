@@ -294,6 +294,7 @@ Create `server/src/routes/projects.route.ts`:
 
 ```ts
 import { Router } from "express";
+import { Types } from "mongoose";
 import { Chat, isValidObjectId } from "../models/Chat.js";
 import { Project } from "../models/Project.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -313,7 +314,10 @@ router.get("/", async (req, res) => {
   // One grouped count instead of a query per project, so the list stays a
   // fixed two round-trips however many projects a user has.
   const counts = await Chat.aggregate<{ _id: unknown; count: number }>([
-    { $match: { userId: req.userId, projectId: { $ne: null } } },
+    // aggregate() skips Mongoose casting, so the string userId must become an
+    // ObjectId by hand — a raw string here matches nothing and every project
+    // silently reports zero chats.
+    { $match: { userId: new Types.ObjectId(req.userId), projectId: { $ne: null } } },
     { $group: { _id: "$projectId", count: { $sum: 1 } } },
   ]);
 
@@ -436,6 +440,7 @@ git commit -m "feat: add project CRUD with cascading delete"
 At the top of `server/src/routes/chats.route.ts`:
 
 ```ts
+import { Types } from "mongoose";
 import { MAX_CHATS_PER_PROJECT, isProjectFull } from "../lib/limits/limits.js";
 import { Project } from "../models/Project.js";
 ```
@@ -446,18 +451,36 @@ Replace the whole `router.get("/", ...)` handler with:
 
 ```ts
 router.get("/", async (req, res) => {
-  const chats = await Chat.find({ userId: req.userId })
-    .select("title projectId messages createdAt updatedAt")
-    .sort({ updatedAt: -1 });
+  // $size counts inside Mongo. Selecting `messages` and reading .length would
+  // pull every message body of every chat across the wire to produce a number,
+  // so the sidebar's cost would grow with total conversation volume.
+  const chats = await Chat.aggregate<{
+    _id: unknown;
+    title: string;
+    projectId: unknown;
+    messageCount: number;
+    updatedAt: Date;
+  }>([
+    { $match: { userId: new Types.ObjectId(req.userId) } },
+    { $sort: { updatedAt: -1 } },
+    {
+      $project: {
+        title: 1,
+        projectId: 1,
+        updatedAt: 1,
+        messageCount: { $size: { $ifNull: ["$messages", []] } },
+      },
+    },
+  ]);
 
   res.json(
     chats.map((chat) => ({
-      id: chat.id,
+      id: String(chat._id),
       title: chat.title,
       projectId: chat.projectId ? String(chat.projectId) : null,
       // The client swaps the composer for a "new chat" button at the cap, and
       // sending the count here saves it fetching every chat to find out.
-      messageCount: chat.messages.length,
+      messageCount: chat.messageCount,
       updatedAt: chat.updatedAt,
     })),
   );
@@ -769,15 +792,30 @@ In `client/src/api/chats.test.ts`, replace the `it('creates a chat with an empty
   })
 ```
 
-- [ ] **Step 7: Run both api suites**
+- [ ] **Step 7: Mirror the caps for display**
+
+Create `client/src/lib/limits.ts`:
+
+```ts
+/**
+ * Display-only mirrors of the server's caps. The server is the enforcer —
+ * these exist so the UI can swap a control before a request is refused.
+ * Changing one without the other only affects when the UI switches, never
+ * what the server accepts.
+ */
+export const MAX_MESSAGES_PER_CHAT = 100
+export const MAX_CHATS_PER_PROJECT = 10
+```
+
+- [ ] **Step 8: Run both api suites**
 
 Run: `cd client && npx vitest run src/api/`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add client/src/api/
+git add client/src/api/ client/src/lib/limits.ts
 git commit -m "feat: add projects api client and chat project scoping"
 ```
 
@@ -1311,12 +1349,14 @@ Directly above the existing `<nav>` that lists chats, insert:
               <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300">
                 <Folder size={14} className="shrink-0" />
                 <span className="flex-1 truncate">{project.name}</span>
-                <span className="text-xs text-zinc-500">{project.chatCount}/10</span>
+                <span className="text-xs text-zinc-500">
+                {project.chatCount}/{MAX_CHATS_PER_PROJECT}
+              </span>
               </div>
 
               {/* A full project can't take another chat, so it offers the only
                   action that still moves the user forward. */}
-              {project.chatCount >= 10 ? (
+              {project.chatCount >= MAX_CHATS_PER_PROJECT ? (
                 <button
                   type="button"
                   onClick={onNewProject}
@@ -1398,6 +1438,7 @@ with the import:
 
 ```tsx
 import type { ProjectSummary } from '../../api/projects'
+import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
 ```
 
 and destructure all four in the function signature.
@@ -1417,8 +1458,11 @@ and add `projects={[]}` to the `render` call beside `user={null}`.
 Then replace the three delete tests (`'deletes a chat without also selecting it, once confirmed'`, `'does not delete on the first click alone'`, `'disarms the confirm when focus moves elsewhere'`) with:
 
 ```tsx
+  // isOpen:true throughout: the component sets `inert` on the aside while
+  // closed on mobile, and jsdom ignores inert — so a test using the default
+  // would pass on clicks a real browser refuses.
   it('asks before deleting a chat', async () => {
-    const { onDelete, onSelect, user } = setup()
+    const { onDelete, onSelect, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
 
@@ -1428,7 +1472,7 @@ Then replace the three delete tests (`'deletes a chat without also selecting it,
   })
 
   it('deletes the chat once confirmed', async () => {
-    const { onDelete, user } = setup()
+    const { onDelete, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
     await user.click(screen.getByRole('button', { name: 'Delete' }))
@@ -1437,7 +1481,7 @@ Then replace the three delete tests (`'deletes a chat without also selecting it,
   })
 
   it('leaves the chat alone when cancelled', async () => {
-    const { onDelete, user } = setup()
+    const { onDelete, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -1455,14 +1499,14 @@ Append inside `describe('ChatSidebar', ...)`:
   const project = { id: 'p1', name: 'Research', chatCount: 3, updatedAt: '' }
 
   it('lists projects with their chat counts', () => {
-    setup({ projects: [project] })
+    setup({ isOpen: true, projects: [project] })
 
     expect(screen.getByText('Research')).toBeInTheDocument()
     expect(screen.getByText('3/10')).toBeInTheDocument()
   })
 
   it('starts a new chat inside a project', async () => {
-    const { onNewChatInProject, user } = setup({ projects: [project] })
+    const { onNewChatInProject, user } = setup({ isOpen: true, projects: [project] })
 
     await user.click(screen.getByRole('button', { name: '+ New chat' }))
 
@@ -1473,6 +1517,7 @@ Append inside `describe('ChatSidebar', ...)`:
   // is starting a new project.
   it('offers a new project instead of a new chat when full', async () => {
     const { onNewProject, onNewChatInProject, user } = setup({
+      isOpen: true,
       projects: [{ ...project, chatCount: 10 }],
     })
 
@@ -1486,7 +1531,7 @@ Append inside `describe('ChatSidebar', ...)`:
   // Deleting a project destroys its chats, so the dialog has to say the
   // number out loud rather than a generic warning.
   it('names the chat count when deleting a project', async () => {
-    const { onDeleteProject, user } = setup({ projects: [project] })
+    const { onDeleteProject, user } = setup({ isOpen: true, projects: [project] })
 
     await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
 
@@ -1499,7 +1544,7 @@ Append inside `describe('ChatSidebar', ...)`:
   })
 
   it('says "1 chat" rather than "1 chats"', async () => {
-    const { user } = setup({ projects: [{ ...project, chatCount: 1 }] })
+    const { user } = setup({ isOpen: true, projects: [{ ...project, chatCount: 1 }] })
 
     await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
 
@@ -1689,6 +1734,7 @@ Add imports:
 
 ```tsx
 import { useProjectStore } from '../../hooks/useProjectStore'
+import { MAX_MESSAGES_PER_CHAT } from '../../lib/limits'
 ```
 
 Add the store reads beside the existing ones:
@@ -1713,7 +1759,7 @@ Derive the cap from the chat list, named before the JSX:
 
 ```tsx
     const activeChat = chats.find((chat) => chat.id === chatId)
-    const isChatFull = (activeChat?.messageCount ?? 0) >= 100
+    const isChatFull = (activeChat?.messageCount ?? 0) >= MAX_MESSAGES_PER_CHAT
 ```
 
 Pass the new props to `<ChatSidebar>`:
