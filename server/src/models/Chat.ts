@@ -19,6 +19,9 @@ const messageSchema = new Schema(
 const chatSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    // Null means standalone. Optional rather than required so existing chats
+    // keep working without a migration.
+    projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null, index: true },
     title: { type: String, default: "New chat" },
     messages: { type: [messageSchema], default: [] },
   },
