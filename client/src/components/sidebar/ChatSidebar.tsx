@@ -1,20 +1,27 @@
 import { useState } from 'react'
-import { Check, LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
+import { Folder, LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
 import type { User } from '../../api/auth'
 import type { ChatSummary } from '../../api/chats'
+import type { ProjectSummary } from '../../api/projects'
+import ConfirmDialog from '../confirm-dialog/ConfirmDialog'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
 
 export type ChatSidebarProps = {
   chats: ChatSummary[]
   activeChatId: string | null
   isOpen: boolean
   user: User | null
+  projects: ProjectSummary[]
   onClose: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
   onDelete: (chatId: string) => void
   onSignOut: () => void
   onUpgrade: () => void
+  onNewProject: () => void
+  onNewChatInProject: (projectId: string) => void
+  onDeleteProject: (projectId: string) => void
 }
 
 export default function ChatSidebar({
@@ -22,16 +29,28 @@ export default function ChatSidebar({
   activeChatId,
   isOpen,
   user,
+  projects,
   onClose,
   onSelect,
   onNewChat,
   onDelete,
   onSignOut,
   onUpgrade,
+  onNewProject,
+  onNewChatInProject,
+  onDeleteProject,
 }: ChatSidebarProps) {
-  // Deleting is destructive and the server has no undo, so the trash icon
-  // arms a confirm button instead of firing straight away.
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  // What the confirm dialog is currently asking about, or null when closed.
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: 'chat'; id: string; title: string } | { kind: 'project'; id: string; name: string; chatCount: number } | null
+  >(null)
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    if (pendingDelete.kind === 'chat') onDelete(pendingDelete.id)
+    else onDeleteProject(pendingDelete.id)
+    setPendingDelete(null)
+  }
 
   // Off-screen but still in the DOM on mobile, so its buttons stay tab-
   // reachable without this. Desktop always shows it, hence the width check —
@@ -47,15 +66,6 @@ export default function ChatSidebar({
   const handleNewChat = () => {
     onNewChat()
     onClose()
-  }
-
-  const handleDelete = (chatId: string) => {
-    if (pendingDeleteId !== chatId) {
-      setPendingDeleteId(chatId)
-      return
-    }
-    setPendingDeleteId(null)
-    onDelete(chatId)
   }
 
   return (
@@ -87,6 +97,68 @@ export default function ChatSidebar({
           </button>
         </div>
 
+        <div className="px-2 pb-2">
+          <div className="flex items-center justify-between px-3 py-1">
+            <span className="text-xs font-medium text-zinc-500">Projects</span>
+            <button
+              type="button"
+              onClick={onNewProject}
+              aria-label="New project"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+
+          {projects.map((project) => (
+            <div key={project.id} className="group/project relative">
+              <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300">
+                <Folder size={14} className="shrink-0" />
+                <span className="flex-1 truncate">{project.name}</span>
+                <span className="text-xs text-zinc-500">
+                {project.chatCount}/{MAX_CHATS_PER_PROJECT}
+              </span>
+              </div>
+
+              {/* A full project can't take another chat, so it offers the only
+                  action that still moves the user forward. */}
+              {project.chatCount >= MAX_CHATS_PER_PROJECT ? (
+                <button
+                  type="button"
+                  onClick={onNewProject}
+                  className="ml-8 px-3 pb-1 text-left text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  + New project
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNewChatInProject(project.id)}
+                  className="ml-8 px-3 pb-1 text-left text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  + New chat
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setPendingDelete({
+                    kind: 'project',
+                    id: project.id,
+                    name: project.name,
+                    chatCount: project.chatCount,
+                  })
+                }
+                aria-label={`Delete project "${project.name}"`}
+                className="absolute top-2 right-1.5 flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover/project:opacity-100"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+
         <nav className="no-scrollbar flex-1 overflow-y-auto px-2 pb-3">
           {chats.length === 0 && (
             <p className="px-3 py-2 text-sm text-zinc-500">No chats yet</p>
@@ -104,17 +176,12 @@ export default function ChatSidebar({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation()
-                  handleDelete(chat.id)
+                  setPendingDelete({ kind: 'chat', id: chat.id, title: chat.title })
                 }}
-                onBlur={() => setPendingDeleteId((id) => (id === chat.id ? null : id))}
-                aria-label={pendingDeleteId === chat.id ? `Confirm delete "${chat.title}"` : `Delete "${chat.title}"`}
-                className={`absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full hover:bg-zinc-700 ${
-                  pendingDeleteId === chat.id
-                    ? 'text-red-400 opacity-100'
-                    : 'text-zinc-500 opacity-0 hover:text-zinc-100 group-hover:opacity-100'
-                }`}
+                aria-label={`Delete "${chat.title}"`}
+                className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover:opacity-100"
               >
-                {pendingDeleteId === chat.id ? <Check size={14} /> : <Trash2 size={14} />}
+                <Trash2 size={14} />
               </button>
             </div>
           ))}
@@ -144,6 +211,23 @@ export default function ChatSidebar({
             </button>
           )}
         </div>
+
+        <ConfirmDialog
+          isOpen={pendingDelete !== null}
+          title={
+            pendingDelete?.kind === 'project'
+              ? `Delete "${pendingDelete.name}"?`
+              : `Delete "${pendingDelete?.title ?? ''}"?`
+          }
+          body={
+            pendingDelete?.kind === 'project'
+              ? `This permanently deletes the project and its ${pendingDelete.chatCount} chat${pendingDelete.chatCount === 1 ? '' : 's'}. This can't be undone.`
+              : "This permanently deletes the chat and its messages. This can't be undone."
+          }
+          confirmLabel={pendingDelete?.kind === 'project' ? 'Delete project and chats' : 'Delete'}
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
       </aside>
     </>
   )
