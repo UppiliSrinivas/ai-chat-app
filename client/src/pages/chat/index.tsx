@@ -5,6 +5,8 @@ import Message from '../../components/message'
 import ChatSidebar from '../../components/sidebar/ChatSidebar'
 import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
+import { useProjectStore } from '../../hooks/useProjectStore'
+import { MAX_MESSAGES_PER_CHAT } from '../../lib/limits'
 
 export default function ChatPage() {
     const turns = useChatStore((state) => state.turns)
@@ -20,10 +22,15 @@ export default function ChatPage() {
     const loadChats = useChatStore((state) => state.loadChats)
     const selectChat = useChatStore((state) => state.selectChat)
     const startNewChat = useChatStore((state) => state.startNewChat)
+    const startNewChatInProject = useChatStore((state) => state.startNewChatInProject)
     const deleteChat = useChatStore((state) => state.deleteChat)
     const user = useAuthStore((state) => state.user)
     const signOut = useAuthStore((state) => state.signOut)
     const startUpgrade = useAuthStore((state) => state.startUpgrade)
+    const projects = useProjectStore((state) => state.projects)
+    const loadProjects = useProjectStore((state) => state.loadProjects)
+    const addProject = useProjectStore((state) => state.addProject)
+    const removeProject = useProjectStore((state) => state.removeProject)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
     const bottomRef = useRef<HTMLDivElement>(null)
@@ -34,11 +41,18 @@ export default function ChatPage() {
     }, [loadChats])
 
     useEffect(() => {
+        loadProjects()
+    }, [loadProjects])
+
+    useEffect(() => {
         if (turns.length > previousTurnCountRef.current) {
             bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
         }
         previousTurnCountRef.current = turns.length
     }, [turns.length])
+
+    const activeChat = chats.find((chat) => chat.id === chatId)
+    const isChatFull = (activeChat?.messageCount ?? 0) >= MAX_MESSAGES_PER_CHAT
 
     return (
         <div className="flex h-svh bg-black w-full">
@@ -53,6 +67,10 @@ export default function ChatPage() {
                 user={user}
                 onSignOut={signOut}
                 onUpgrade={startUpgrade}
+                projects={projects}
+                onNewProject={() => addProject()}
+                onNewChatInProject={startNewChatInProject}
+                onDeleteProject={removeProject}
             />
 
             <div className="relative flex-1">
@@ -71,7 +89,19 @@ export default function ChatPage() {
                             <p className="text-md text-zinc-400">Start a new conversation</p>
                         </div>
                         <div className="w-full max-w-3xl">
-                            <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} autoFocus />
+                            {isChatFull ? (
+                                <div className="flex justify-center px-4 py-3">
+                                    <button
+                                        type="button"
+                                        onClick={startNewChat}
+                                        className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+                                    >
+                                        Start a new chat
+                                    </button>
+                                </div>
+                            ) : (
+                                <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} autoFocus />
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -107,7 +137,19 @@ export default function ChatPage() {
                         <div className="absolute inset-x-0 bottom-0">
                             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-black via-black/2 to-transparent" />
                             <div className="relative bottom-5">
-                                <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} />
+                                {isChatFull ? (
+                                    <div className="flex justify-center px-4 py-3">
+                                        <button
+                                            type="button"
+                                            onClick={startNewChat}
+                                            className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+                                        >
+                                            Start a new chat
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} />
+                                )}
                             </div>
                         </div>
                     </div>

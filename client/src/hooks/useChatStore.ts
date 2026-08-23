@@ -42,6 +42,7 @@ type ChatState = {
   loadChats: () => Promise<void>
   selectChat: (chatId: string) => Promise<void>
   startNewChat: () => void
+  startNewChatInProject: (projectId: string) => Promise<void>
   deleteChat: (chatId: string) => Promise<void>
   reset: () => void
 }
@@ -187,6 +188,15 @@ export const useChatStore = create<ChatState>((set, get) => {
     startNewChat: () => {
       if (get().isStreaming) return
       set({ chatId: null, turns: [], error: null })
+    },
+
+    startNewChatInProject: async (projectId) => {
+      try {
+        const chat = await createChat(projectId)
+        set({ chatId: chat.id, turns: [], error: null, chats: [chat, ...get().chats] })
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : 'Could not create the chat' })
+      }
     },
 
     deleteChat: async (chatId) => {

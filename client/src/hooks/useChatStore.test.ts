@@ -238,6 +238,14 @@ describe('startNewChat', () => {
   })
 })
 
+describe('startNewChatInProject', () => {
+  it('creates a chat inside the given project', async () => {
+    await useChatStore.getState().startNewChatInProject('p1')
+
+    expect(createChat).toHaveBeenCalledExactlyOnceWith('p1')
+  })
+})
+
 describe('deleteChat', () => {
   it('removes the chat from the sidebar list', async () => {
     useChatStore.setState({

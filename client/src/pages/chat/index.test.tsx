@@ -26,31 +26,33 @@ vi.mock('../../components/message', () => ({
 }))
 
 vi.mock('../../components/sidebar/ChatSidebar', () => ({
-  default: ({ isOpen, user, onSignOut, onUpgrade }: {
+  default: ({ isOpen, user, projects, onSignOut, onUpgrade, onNewProject }: {
     isOpen: boolean
     user: { email: string | null } | null
+    projects: { id: string }[]
     onSignOut: () => void
     onUpgrade: () => void
+    onNewProject: () => void
   }) => (
     <div>
       <span>sidebar {isOpen ? 'open' : 'closed'}</span>
       <span>account {user?.email ?? 'none'}</span>
-      <button type="button" onClick={onSignOut}>
-        sidebar sign out
-      </button>
-      <button type="button" onClick={onUpgrade}>
-        sidebar upgrade
-      </button>
+      <span>projects {projects.length}</span>
+      <button type="button" onClick={onSignOut}>sidebar sign out</button>
+      <button type="button" onClick={onUpgrade}>sidebar upgrade</button>
+      <button type="button" onClick={onNewProject}>sidebar new project</button>
     </div>
   ),
 }))
 
 const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { useChatStore } = await import('../../hooks/useChatStore')
+const { useProjectStore } = await import('../../hooks/useProjectStore')
 const { default: ChatPage } = await import('./index')
 
 const initialAuth = useAuthStore.getState()
 const initialChat = useChatStore.getState()
+const initialProject = useProjectStore.getState()
 
 const turn = (id: string, prompt: string, reply: string) => ({
   id,
@@ -62,6 +64,7 @@ const turn = (id: string, prompt: string, reply: string) => ({
 beforeEach(() => {
   useAuthStore.setState({ ...initialAuth }, true)
   useChatStore.setState({ ...initialChat, loadChats: vi.fn() }, true)
+  useProjectStore.setState({ ...initialProject, loadProjects: vi.fn() }, true)
 })
 
 describe('ChatPage', () => {
@@ -158,5 +161,57 @@ describe('ChatPage', () => {
     await user.click(screen.getByRole('button', { name: 'Open chat history' }))
 
     expect(screen.getByText('sidebar open')).toBeInTheDocument()
+  })
+
+  it('loads projects on mount', () => {
+    const loadProjects = vi.fn()
+    useProjectStore.setState({ loadProjects })
+
+    render(<ChatPage />)
+
+    expect(loadProjects).toHaveBeenCalledOnce()
+  })
+
+  // At the cap the chat is read-only: the only way forward is a new chat, so
+  // the composer is replaced rather than merely disabled.
+  it('replaces the composer with a new-chat button at the message cap', () => {
+    useChatStore.setState({
+      chatId: 'c1',
+      turns: [turn('t1', 'hi', 'hello')],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 100, updatedAt: '' }],
+    })
+
+    render(<ChatPage />)
+
+    expect(screen.queryByRole('button', { name: 'send' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Start a new chat' })).toBeInTheDocument()
+  })
+
+  it('keeps the composer below the cap', () => {
+    useChatStore.setState({
+      chatId: 'c1',
+      turns: [turn('t1', 'hi', 'hello')],
+      chats: [{ id: 'c1', title: 'Fine', projectId: null, messageCount: 99, updatedAt: '' }],
+    })
+
+    render(<ChatPage />)
+
+    expect(screen.getByRole('button', { name: 'send' })).toBeInTheDocument()
+  })
+
+  it('starts a new chat from the cap notice', async () => {
+    const startNewChat = vi.fn()
+    useChatStore.setState({
+      chatId: 'c1',
+      turns: [turn('t1', 'hi', 'hello')],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 100, updatedAt: '' }],
+      startNewChat,
+    })
+    const user = userEvent.setup()
+    render(<ChatPage />)
+
+    await user.click(screen.getByRole('button', { name: 'Start a new chat' }))
+
+    expect(startNewChat).toHaveBeenCalledOnce()
   })
 })
