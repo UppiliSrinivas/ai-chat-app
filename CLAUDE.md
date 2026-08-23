@@ -110,8 +110,8 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
   - Server: every `lib/` module is covered. `sse/sse.test.ts` drives `streamSSE` through a fake `Response` — it pins the disconnect-on-`res`-not-`req` behavior and the keepalive interval, both easy to regress.
   - Client: `hooks/`, `api/`, every component, `App.tsx`, and both pages. See `client/CLAUDE.md` for the Testing Library conventions.
   - Middleware and models are covered too — Mongoose validates a document without a connection, and the middleware take plain fake `req`/`res` objects, so neither needs a live database.
-  - **Untested:** the three route files. Driving them needs `supertest` to dispatch through Express, which isn't installed — they're the whole reason server coverage sits below the 80% threshold.
-- **Coverage thresholds are enforced, not advisory** — 80% across statements/branches/functions/lines fails `npm run test:coverage` in both packages. `index.ts`, `app.ts`, and `config/db.ts` are excluded as boot wiring; the client excludes `main.tsx`.
+  - **Untested:** the four route files (`auth.route.ts`, `chats.route.ts`, `gemini.chat.route.ts`, `projects.route.ts`). Driving them needs `supertest` to dispatch through Express, which isn't installed — they're excluded from the coverage denominator for that reason, so the server's ~97% figure isn't whole-server coverage.
+- **Coverage thresholds are enforced, not advisory** — 80% across statements/branches/functions/lines fails `npm run test:coverage` in both packages. `index.ts`, `app.ts`, `config/db.ts`, and `src/routes/**` are excluded on the server as boot wiring / untestable integration surface; the client excludes `main.tsx`.
 - **`app.ts` holds the Express app, `index.ts` only boots it** — the split exists so routes can be tested without binding a port, and it's also what a serverless host would need.
 - **No Vite proxy** — client calls the server's absolute origin, hence `5173` as the default CORS origin.
 
