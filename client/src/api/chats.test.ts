@@ -14,10 +14,19 @@ beforeEach(() => {
 describe('chats api', () => {
   // POST with an empty object rather than no body: the server's json parser
   // leaves req.body undefined otherwise, which its validation rejects.
-  it('creates a chat with an empty JSON body', async () => {
+  it('creates a standalone chat with an empty JSON body', async () => {
     await createChat()
 
     expect(apiFetch).toHaveBeenCalledExactlyOnceWith('/chats', { method: 'POST', body: '{}' })
+  })
+
+  it('creates a chat inside a project', async () => {
+    await createChat('p1')
+
+    expect(apiFetch).toHaveBeenCalledExactlyOnceWith('/chats', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: 'p1' }),
+    })
   })
 
   it('lists chats with a plain GET', async () => {

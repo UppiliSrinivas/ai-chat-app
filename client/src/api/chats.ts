@@ -3,6 +3,8 @@ import { apiFetch } from './client'
 export type ChatSummary = {
   id: string
   title: string
+  projectId: string | null
+  messageCount: number
   updatedAt: string
 }
 
@@ -13,8 +15,11 @@ export type ChatMessage = {
 
 export type ChatDetail = ChatSummary & { messages: ChatMessage[] }
 
-export function createChat(): Promise<ChatSummary & { messages: [] }> {
-  return apiFetch('/chats', { method: 'POST', body: JSON.stringify({}) })
+export function createChat(projectId?: string): Promise<ChatSummary & { messages: [] }> {
+  return apiFetch('/chats', {
+    method: 'POST',
+    body: JSON.stringify(projectId ? { projectId } : {}),
+  })
 }
 
 export function listChats(): Promise<ChatSummary[]> {
