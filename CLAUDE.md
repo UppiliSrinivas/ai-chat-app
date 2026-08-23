@@ -101,6 +101,7 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - **`trust proxy` is `1` in production, `false` otherwise.** Render terminates TLS at a proxy, so without it every client shares the proxy's IP and the limiter is useless. Never set it to `true` — that trusts a spoofable `X-Forwarded-For`, and express-rate-limit rejects it.
 - **`middleware/errorHandler.ts` is the last `app.use`.** Express 5 forwards async rejections there; without it they hit Express's default handler, which returns the stack trace whenever `NODE_ENV` isn't production. It also maps Mongo's duplicate-key (11000) to a 409, and re-throws once headers are sent so a half-written SSE stream still dies cleanly.
 - **`SIGTERM`/`SIGINT` drain in-flight requests** before exit, with a 10s backstop. Render sends `SIGTERM` on every deploy, and an open SSE stream would otherwise be severed mid-response.
+- **Size caps live in `lib/limits/`** — 100 messages per chat, 10 chats per project, enforced in the routes and returned to the client as `messageCount`/`chatCount`. Both reject with 409 and a `code` (`CHAT_FULL`, `PROJECT_FULL`) so the client can tell them apart from the duplicate-key 409 the error handler produces. The chat cap is checked before `flushHeaders()`, since an open SSE stream can no longer carry a status.
 
 ## Current state
 
