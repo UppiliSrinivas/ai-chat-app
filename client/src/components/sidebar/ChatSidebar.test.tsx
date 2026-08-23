@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import ChatSidebar, { type ChatSidebarProps } from './ChatSidebar'
 
 const chats = [
-  { id: 'a', title: 'First chat', updatedAt: '' },
-  { id: 'b', title: 'Second chat', updatedAt: '' },
+  { id: 'a', title: 'First chat', projectId: null, messageCount: 0, updatedAt: '' },
+  { id: 'b', title: 'Second chat', projectId: null, messageCount: 0, updatedAt: '' },
 ]
 
 const setup = (props: Partial<ChatSidebarProps> = {}) => {

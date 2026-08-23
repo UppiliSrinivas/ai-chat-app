@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   useChatStore.setState(initialState)
   vi.mocked(listChats).mockResolvedValue([])
-  vi.mocked(createChat).mockResolvedValue({ id: 'chat-1', title: 'New chat', updatedAt: '', messages: [] })
+  vi.mocked(createChat).mockResolvedValue({ id: 'chat-1', title: 'New chat', projectId: null, messageCount: 0, updatedAt: '', messages: [] })
   vi.mocked(streamChat).mockResolvedValue(undefined)
 })
 
@@ -159,6 +159,8 @@ describe('selectChat', () => {
     vi.mocked(getChat).mockResolvedValue({
       id: 'chat-9',
       title: 'Saved chat',
+      projectId: null,
+      messageCount: 4,
       updatedAt: '',
       messages: [
         { role: 'user', content: 'q1' },
@@ -182,6 +184,8 @@ describe('selectChat', () => {
     vi.mocked(getChat).mockResolvedValue({
       id: 'chat-9',
       title: 'Saved chat',
+      projectId: null,
+      messageCount: 1,
       updatedAt: '',
       messages: [{ role: 'user', content: 'unanswered' }],
     })
@@ -238,8 +242,8 @@ describe('deleteChat', () => {
   it('removes the chat from the sidebar list', async () => {
     useChatStore.setState({
       chats: [
-        { id: 'a', title: 'A', updatedAt: '' },
-        { id: 'b', title: 'B', updatedAt: '' },
+        { id: 'a', title: 'A', projectId: null, messageCount: 0, updatedAt: '' },
+        { id: 'b', title: 'B', projectId: null, messageCount: 0, updatedAt: '' },
       ],
     })
     vi.mocked(deleteChat).mockResolvedValue(undefined)
@@ -253,7 +257,7 @@ describe('deleteChat', () => {
     useChatStore.setState({
       chatId: 'a',
       turns: [{ id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
-      chats: [{ id: 'a', title: 'A', updatedAt: '' }],
+      chats: [{ id: 'a', title: 'A', projectId: null, messageCount: 0, updatedAt: '' }],
     })
     vi.mocked(deleteChat).mockResolvedValue(undefined)
 
@@ -266,8 +270,8 @@ describe('deleteChat', () => {
     useChatStore.setState({
       chatId: 'b',
       chats: [
-        { id: 'a', title: 'A', updatedAt: '' },
-        { id: 'b', title: 'B', updatedAt: '' },
+        { id: 'a', title: 'A', projectId: null, messageCount: 0, updatedAt: '' },
+        { id: 'b', title: 'B', projectId: null, messageCount: 0, updatedAt: '' },
       ],
     })
     vi.mocked(deleteChat).mockResolvedValue(undefined)
@@ -283,7 +287,7 @@ describe('reset', () => {
     useChatStore.setState({
       chatId: 'a',
       turns: [{ id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
-      chats: [{ id: 'a', title: 'A', updatedAt: '' }],
+      chats: [{ id: 'a', title: 'A', projectId: null, messageCount: 0, updatedAt: '' }],
       error: 'stale',
       isStreaming: true,
       streamingTurnId: 't',
