@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { gemini, isGeminiConfigured } from "../config/gemini.js";
 import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request/chat-request.js";
 import { toGeminiContents } from "../lib/history/history.js";
+import { MAX_MESSAGES_PER_CHAT, isChatFull } from "../lib/limits/limits.js";
 import { streamSSE } from "../lib/sse/sse.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
@@ -39,6 +40,16 @@ router.post("/", async (req, res) => {
   const chat = await Chat.findOne({ _id: chatId, userId: req.userId });
   if (!chat) {
     res.status(404).json({ message: "Chat not found." });
+    return;
+  }
+
+  // Checked before flushHeaders — once the SSE stream opens, a real HTTP
+  // status can no longer be returned.
+  if (isChatFull(chat.messages.length)) {
+    res.status(409).json({
+      message: `This chat has reached its limit of ${MAX_MESSAGES_PER_CHAT} messages. Start a new chat to continue.`,
+      code: "CHAT_FULL",
+    });
     return;
   }
 
