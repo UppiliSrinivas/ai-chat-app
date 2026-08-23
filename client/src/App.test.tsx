@@ -6,6 +6,7 @@ vi.mock('./pages/signin', () => ({ default: () => <div>sign in page</div> }))
 
 const { useAuthStore } = await import('./hooks/useAuthStore')
 const { useChatStore } = await import('./hooks/useChatStore')
+const { useProjectStore } = await import('./hooks/useProjectStore')
 const { default: App } = await import('./App')
 
 const initialAuth = useAuthStore.getState()
@@ -81,5 +82,15 @@ describe('App', () => {
     render(<App />)
 
     expect(reset).not.toHaveBeenCalled()
+  })
+
+  it('clears the previous session projects on sign out', () => {
+    const reset = vi.fn()
+    useProjectStore.setState({ reset })
+    useAuthStore.setState({ status: 'signedOut' })
+
+    render(<App />)
+
+    expect(reset).toHaveBeenCalled()
   })
 })
