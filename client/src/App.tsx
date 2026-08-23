@@ -4,6 +4,7 @@ import ChatPage from './pages/chat'
 import SignInPage from './pages/signin'
 import { useAuthStore } from './hooks/useAuthStore'
 import { useChatStore } from './hooks/useChatStore'
+import { useProjectStore } from './hooks/useProjectStore'
 
 export default function App() {
   const status = useAuthStore((state) => state.status)
@@ -17,7 +18,10 @@ export default function App() {
   // Clears any in-memory chat list/messages from a previous session so the
   // next person to sign in on this browser never sees them.
   useEffect(() => {
-    if (status === 'signedOut') useChatStore.getState().reset()
+    if (status === 'signedOut') {
+      useChatStore.getState().reset()
+      useProjectStore.getState().reset()
+    }
   }, [status])
 
   // Render nothing until the cookie probe resolves, so a signed-in user
