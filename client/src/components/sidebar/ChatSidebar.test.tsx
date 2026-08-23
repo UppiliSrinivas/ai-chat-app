@@ -16,8 +16,11 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
     onDelete: vi.fn(),
     onSignOut: vi.fn(),
     onUpgrade: vi.fn(),
+    onNewProject: vi.fn(),
+    onNewChatInProject: vi.fn(),
+    onDeleteProject: vi.fn(),
   }
-  render(<ChatSidebar chats={chats} activeChatId={null} isOpen={false} user={null} {...handlers} {...props} />)
+  render(<ChatSidebar chats={chats} activeChatId={null} isOpen={false} user={null} projects={[]} {...handlers} {...props} />)
   return { ...handlers, user: userEvent.setup() }
 }
 
@@ -53,35 +56,36 @@ describe('ChatSidebar', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('deletes a chat without also selecting it, once confirmed', async () => {
-    const { onDelete, onSelect, user } = setup()
+  // isOpen:true throughout: the component sets `inert` on the aside while
+  // closed on mobile, and jsdom ignores inert — so a test using the default
+  // would pass on clicks a real browser refuses.
+  it('asks before deleting a chat', async () => {
+    const { onDelete, onSelect, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
-    await user.click(screen.getByRole('button', { name: 'Confirm delete "First chat"' }))
 
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith('a')
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Delete "First chat"?')
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('does not delete on the first click alone', async () => {
-    const { onDelete, user } = setup()
+  it('deletes the chat once confirmed', async () => {
+    const { onDelete, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(onDelete).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Confirm delete "First chat"' })).toBeInTheDocument()
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith('a')
   })
 
-  // Arming one row and clicking away must not leave a second row primed to
-  // delete on a single click.
-  it('disarms the confirm when focus moves elsewhere', async () => {
-    const { onDelete, user } = setup()
+  it('leaves the chat alone when cancelled', async () => {
+    const { onDelete, user } = setup({ isOpen: true })
 
     await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
-    await user.click(screen.getByRole('button', { name: 'Delete "Second chat"' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(onDelete).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Delete "First chat"' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('hides the drawer from keyboard users while closed on mobile', () => {
@@ -135,5 +139,60 @@ describe('ChatSidebar', () => {
     setup({ user: { id: '1', email: null, isAnonymous: true } })
 
     expect(screen.getByText('Guest')).toBeInTheDocument()
+  })
+
+  const project = { id: 'p1', name: 'Research', chatCount: 3, updatedAt: '' }
+
+  it('lists projects with their chat counts', () => {
+    setup({ isOpen: true, projects: [project] })
+
+    expect(screen.getByText('Research')).toBeInTheDocument()
+    expect(screen.getByText('3/10')).toBeInTheDocument()
+  })
+
+  it('starts a new chat inside a project', async () => {
+    const { onNewChatInProject, user } = setup({ isOpen: true, projects: [project] })
+
+    await user.click(screen.getByRole('button', { name: '+ New chat' }))
+
+    expect(onNewChatInProject).toHaveBeenCalledExactlyOnceWith('p1')
+  })
+
+  // A full project can't take another chat, so the only forward action left
+  // is starting a new project.
+  it('offers a new project instead of a new chat when full', async () => {
+    const { onNewProject, onNewChatInProject, user } = setup({
+      isOpen: true,
+      projects: [{ ...project, chatCount: 10 }],
+    })
+
+    expect(screen.queryByRole('button', { name: '+ New chat' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: '+ New project' }))
+
+    expect(onNewProject).toHaveBeenCalledOnce()
+    expect(onNewChatInProject).not.toHaveBeenCalled()
+  })
+
+  // Deleting a project destroys its chats, so the dialog has to say the
+  // number out loud rather than a generic warning.
+  it('names the chat count when deleting a project', async () => {
+    const { onDeleteProject, user } = setup({ isOpen: true, projects: [project] })
+
+    await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
+
+    expect(screen.getByText(/its 3 chats/)).toBeInTheDocument()
+    expect(onDeleteProject).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Delete project and chats' }))
+
+    expect(onDeleteProject).toHaveBeenCalledExactlyOnceWith('p1')
+  })
+
+  it('says "1 chat" rather than "1 chats"', async () => {
+    const { user } = setup({ isOpen: true, projects: [{ ...project, chatCount: 1 }] })
+
+    await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
+
+    expect(screen.getByText(/its 1 chat\./)).toBeInTheDocument()
   })
 })

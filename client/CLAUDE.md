@@ -55,6 +55,8 @@ Query by accessible role/name (`getByRole('button', { name: 'Send message' })`) 
 
 **Components are reusable and presentational**, driven by props — no reaching for global state or fetching their own data. Push data loading/streaming to a hook or the top of the tree; split any component that's grown a second responsibility.
 
+**Destructive actions go through `ConfirmDialog`** — never an inline arm-to-confirm. A project delete cascades to its chats, so its dialog states the chat count explicitly rather than a generic warning.
+
 ## Talking to the server
 
 No Vite proxy — requests go to the server's absolute origin (`http://localhost:5000` by default), which is why `5173` is the server's default CORS origin. Changing the client's dev port means updating `CORS_ORIGIN` in `server/.env`.
