@@ -81,4 +81,19 @@ describe('ConfirmDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
   })
+
+  // A fixed-position dialog inside a transformed ancestor resolves against that
+  // ancestor, not the viewport — so it must portal out of the tree entirely.
+  it('renders outside its parent element', () => {
+    const parent = document.createElement('div')
+    document.body.appendChild(parent)
+
+    render(
+      <ConfirmDialog isOpen title="Delete?" body="Gone." onConfirm={vi.fn()} onCancel={vi.fn()} />,
+      { container: parent },
+    )
+
+    expect(parent.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+  })
 })

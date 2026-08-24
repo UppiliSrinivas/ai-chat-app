@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 export type ConfirmDialogProps = {
   isOpen: boolean
@@ -38,7 +39,10 @@ export default function ConfirmDialog({
 
   if (!isOpen) return null
 
-  return (
+  // Portalled to body because `position: fixed` resolves against the nearest
+  // transformed ancestor, not the viewport — and the sidebar this opens from
+  // always carries a translate class, which would trap the dialog inside it.
+  return createPortal(
     <>
       <div onClick={onCancel} className="fixed inset-0 z-[60] bg-black/70" aria-hidden="true" />
       <div
@@ -70,6 +74,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }
