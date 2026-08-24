@@ -1,6 +1,8 @@
 /**
  * Size caps shared by the routes that enforce them. Pure and separate from
  * the routes so the boundary arithmetic is testable without a database.
+ *
+ * `client/src/lib/limits.ts` mirrors these numbers for display — change both.
  */
 
 /** User and assistant messages combined, not turns. */

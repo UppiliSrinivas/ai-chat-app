@@ -23,7 +23,8 @@ router.get("/", async (req, res) => {
     updatedAt: Date;
   }>([
     { $match: { userId: new Types.ObjectId(req.userId) } },
-    { $sort: { updatedAt: -1 } },
+    // $project before $sort so the sort never carries full messages arrays
+    // through it. It still emits updatedAt, so the sort below has its key.
     {
       $project: {
         title: 1,
@@ -32,6 +33,7 @@ router.get("/", async (req, res) => {
         messageCount: { $size: { $ifNull: ["$messages", []] } },
       },
     },
+    { $sort: { updatedAt: -1 } },
   ]);
 
   res.json(
