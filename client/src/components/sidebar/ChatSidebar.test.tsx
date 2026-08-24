@@ -20,7 +20,18 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
     onNewChatInProject: vi.fn(),
     onDeleteProject: vi.fn(),
   }
-  render(<ChatSidebar chats={chats} activeChatId={null} isOpen={false} user={null} projects={[]} {...handlers} {...props} />)
+  render(
+    <ChatSidebar
+      chats={chats}
+      activeChatId={null}
+      isOpen={false}
+      user={null}
+      projects={[]}
+      projectError={null}
+      {...handlers}
+      {...props}
+    />,
+  )
   return { ...handlers, user: userEvent.setup() }
 }
 
@@ -194,5 +205,42 @@ describe('ChatSidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
 
     expect(screen.getByText(/its 1 chat\./)).toBeInTheDocument()
+  })
+
+  // A failed project create or delete used to leave no trace on screen at all.
+  it('shows a project failure', () => {
+    setup({ isOpen: true, projectError: 'Too many requests. Please try again shortly.' })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Too many requests. Please try again shortly.')
+  })
+
+  it('stays quiet when projects are fine', () => {
+    setup({ isOpen: true, projects: [project] })
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // A chat inside a project belongs under that project, not in the flat list —
+  // otherwise it looks unfiled, and the delete dialog's "and its 3 chats"
+  // counts rows the user can see nowhere.
+  it('keeps a project chat out of the loose list', () => {
+    setup({
+      isOpen: true,
+      projects: [project],
+      chats: [...chats, { id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }],
+    })
+
+    expect(screen.queryByRole('button', { name: 'Filed chat' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'First chat' })).toBeInTheDocument()
+  })
+
+  it('says there are no chats when every chat is inside a project', () => {
+    setup({
+      isOpen: true,
+      projects: [project],
+      chats: [{ id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }],
+    })
+
+    expect(screen.getByText('No chats yet')).toBeInTheDocument()
   })
 })

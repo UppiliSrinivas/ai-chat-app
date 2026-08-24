@@ -13,6 +13,7 @@ export type ChatSidebarProps = {
   isOpen: boolean
   user: User | null
   projects: ProjectSummary[]
+  projectError: string | null
   onClose: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
@@ -30,6 +31,7 @@ export default function ChatSidebar({
   isOpen,
   user,
   projects,
+  projectError,
   onClose,
   onSelect,
   onNewChat,
@@ -67,6 +69,10 @@ export default function ChatSidebar({
     onNewChat()
     onClose()
   }
+
+  // Chats inside a project are listed under it, so showing them here too would
+  // make the same chat look like it belongs nowhere.
+  const looseChats = chats.filter((chat) => chat.projectId === null)
 
   return (
     <>
@@ -110,14 +116,20 @@ export default function ChatSidebar({
             </button>
           </div>
 
+          {projectError && (
+            <p role="alert" className="px-3 py-1 text-xs text-red-400">
+              {projectError}
+            </p>
+          )}
+
           {projects.map((project) => (
             <div key={project.id} className="group/project relative">
               <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300">
                 <Folder size={14} className="shrink-0" />
                 <span className="flex-1 truncate">{project.name}</span>
                 <span className="text-xs text-zinc-500">
-                {project.chatCount}/{MAX_CHATS_PER_PROJECT}
-              </span>
+                  {project.chatCount}/{MAX_CHATS_PER_PROJECT}
+                </span>
               </div>
 
               {/* A full project can't take another chat, so it offers the only
@@ -160,10 +172,10 @@ export default function ChatSidebar({
         </div>
 
         <nav className="no-scrollbar flex-1 overflow-y-auto px-2 pb-3">
-          {chats.length === 0 && (
+          {looseChats.length === 0 && (
             <p className="px-3 py-2 text-sm text-zinc-500">No chats yet</p>
           )}
-          {chats.map((chat) => (
+          {looseChats.map((chat) => (
             <div key={chat.id} className="group relative">
               <button
                 type="button"

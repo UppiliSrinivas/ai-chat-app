@@ -28,6 +28,7 @@ export default function ChatPage() {
     const signOut = useAuthStore((state) => state.signOut)
     const startUpgrade = useAuthStore((state) => state.startUpgrade)
     const projects = useProjectStore((state) => state.projects)
+    const projectError = useProjectStore((state) => state.error)
     const loadProjects = useProjectStore((state) => state.loadProjects)
     const addProject = useProjectStore((state) => state.addProject)
     const removeProject = useProjectStore((state) => state.removeProject)
@@ -53,6 +54,14 @@ export default function ChatPage() {
 
     const activeChat = chats.find((chat) => chat.id === chatId)
     const isChatFull = (activeChat?.messageCount ?? 0) >= MAX_MESSAGES_PER_CHAT
+    const errorNotice = error ? <p className="px-4 py-2 text-sm text-red-400">{error}</p> : null
+
+    // The server cascade already deleted this project's chats, so the sidebar
+    // list has to be refetched or its stale rows 404 on the next click.
+    const handleDeleteProject = async (projectId: string) => {
+        await removeProject(projectId)
+        loadChats()
+    }
 
     return (
         <div className="flex h-svh bg-black w-full">
@@ -68,9 +77,10 @@ export default function ChatPage() {
                 onSignOut={signOut}
                 onUpgrade={startUpgrade}
                 projects={projects}
+                projectError={projectError}
                 onNewProject={() => addProject()}
                 onNewChatInProject={startNewChatInProject}
-                onDeleteProject={removeProject}
+                onDeleteProject={handleDeleteProject}
             />
 
             <div className="relative flex-1">
@@ -89,6 +99,7 @@ export default function ChatPage() {
                             <p className="text-md text-zinc-400">Start a new conversation</p>
                         </div>
                         <div className="w-full max-w-3xl">
+                            {errorNotice}
                             {isChatFull ? (
                                 <div className="flex justify-center px-4 py-3">
                                     <button
@@ -129,7 +140,7 @@ export default function ChatPage() {
                                         </div>
                                     )
                                 })}
-                                {error && <p className="px-4 py-2 text-sm text-red-400">{error}</p>}
+                                {errorNotice}
                             </div>
                             <div ref={bottomRef} />
                         </div>
