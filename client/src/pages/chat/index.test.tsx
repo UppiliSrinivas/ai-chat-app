@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // The children are covered by their own suites; stubbing them keeps this
@@ -26,21 +26,25 @@ vi.mock('../../components/message', () => ({
 }))
 
 vi.mock('../../components/sidebar/ChatSidebar', () => ({
-  default: ({ isOpen, user, projects, onSignOut, onUpgrade, onNewProject }: {
+  default: ({ isOpen, user, projects, projectError, onSignOut, onUpgrade, onNewProject, onDeleteProject }: {
     isOpen: boolean
     user: { email: string | null } | null
     projects: { id: string }[]
+    projectError: string | null
     onSignOut: () => void
     onUpgrade: () => void
     onNewProject: () => void
+    onDeleteProject: (projectId: string) => void
   }) => (
     <div>
       <span>sidebar {isOpen ? 'open' : 'closed'}</span>
       <span>account {user?.email ?? 'none'}</span>
       <span>projects {projects.length}</span>
+      <span>project error {projectError ?? 'none'}</span>
       <button type="button" onClick={onSignOut}>sidebar sign out</button>
       <button type="button" onClick={onUpgrade}>sidebar upgrade</button>
       <button type="button" onClick={onNewProject}>sidebar new project</button>
+      <button type="button" onClick={() => onDeleteProject('p1')}>sidebar delete project</button>
     </div>
   ),
 }))
@@ -197,6 +201,41 @@ describe('ChatPage', () => {
     render(<ChatPage />)
 
     expect(screen.getByRole('button', { name: 'send' })).toBeInTheDocument()
+  })
+
+  // The server cascade takes the project's chats with it, so leaving the
+  // sidebar list alone would keep rows that 404 on the next click.
+  it('refetches the chats after a project is deleted', async () => {
+    const loadChats = vi.fn()
+    const removeProject = vi.fn().mockResolvedValue(undefined)
+    useChatStore.setState({ loadChats })
+    useProjectStore.setState({ removeProject })
+    const user = userEvent.setup()
+    render(<ChatPage />)
+    loadChats.mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'sidebar delete project' }))
+
+    expect(removeProject).toHaveBeenCalledExactlyOnceWith('p1')
+    await waitFor(() => expect(loadChats).toHaveBeenCalledOnce())
+  })
+
+  it('hands a project failure to the sidebar', () => {
+    useProjectStore.setState({ error: 'Could not create the project' })
+
+    render(<ChatPage />)
+
+    expect(screen.getByText('project error Could not create the project')).toBeInTheDocument()
+  })
+
+  // An error raised before the first reply arrives has no transcript to sit
+  // beside, and used to render nowhere at all.
+  it('surfaces a store error on an empty chat too', () => {
+    useChatStore.setState({ turns: [], error: 'Could not create the chat' })
+
+    render(<ChatPage />)
+
+    expect(screen.getByText('Could not create the chat')).toBeInTheDocument()
   })
 
   it('starts a new chat from the cap notice', async () => {
