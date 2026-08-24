@@ -88,7 +88,10 @@ router.post("/", async (req, res) => {
   // transient failure with zero chunks shouldn't leave an empty message in
   // the transcript. The user's message above is already saved either way.
   if (fullText) {
-    await Chat.updateOne({ _id: chatId }, { $push: { messages: { role: "assistant", content: fullText } } });
+    await Chat.updateOne(
+      { _id: chatId, userId: req.userId },
+      { $push: { messages: { role: "assistant", content: fullText } } },
+    );
   }
 });
 

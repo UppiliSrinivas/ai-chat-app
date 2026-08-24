@@ -3,10 +3,13 @@ import { Types } from "mongoose";
 import { Chat, isValidObjectId } from "../models/Chat.js";
 import { Project } from "../models/Project.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { chatLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 
-router.use(requireAuth);
+// Creating a project is a free write for any authenticated user, guests
+// included. requireAuth runs first so the limiter keys on req.userId, not IP.
+router.use(requireAuth, chatLimiter);
 
 const MAX_NAME_LENGTH = 200;
 
@@ -78,16 +81,18 @@ router.delete("/:id", async (req, res) => {
     return;
   }
 
-  const project = await Project.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+  const project = await Project.findOne({ _id: req.params.id, userId: req.userId });
   if (!project) {
     res.status(404).json({ message: "Project not found." });
     return;
   }
 
-  // Scoped by userId as well as projectId. The ownership check above already
-  // passed, but keeping the filter complete means a future refactor that
-  // moves this line can't turn into a cross-tenant delete.
+  // Chats go first: dropping the project first would leave them pointing at a
+  // projectId nothing can resolve, and no retry could find them again.
+  // Both filters stay scoped by userId so a later refactor that moves either
+  // line can't turn into a cross-tenant delete.
   await Chat.deleteMany({ userId: req.userId, projectId: project.id });
+  await Project.deleteOne({ _id: project.id, userId: req.userId });
 
   res.status(204).end();
 });
