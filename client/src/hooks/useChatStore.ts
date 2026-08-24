@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { streamChat } from '../api/streamChat'
 import { createChat, deleteChat as deleteChatRequest, getChat, listChats, type ChatMessage, type ChatSummary } from '../api/chats'
+import { useProjectStore } from './useProjectStore'
 
 export type Turn = {
   id: string
@@ -35,6 +36,8 @@ type ChatState = {
   chatId: string | null
   chats: ChatSummary[]
   isLoadingChat: boolean
+  // The project the next created chat belongs to, or null for a loose chat.
+  pendingProjectId: string | null
   sendMessage: (content: string) => Promise<void>
   editMessage: (turnId: string, newContent: string) => Promise<void>
   navigateEdit: (turnId: string, direction: 'prev' | 'next') => void
@@ -42,7 +45,7 @@ type ChatState = {
   loadChats: () => Promise<void>
   selectChat: (chatId: string) => Promise<void>
   startNewChat: () => void
-  startNewChatInProject: (projectId: string) => Promise<void>
+  startNewChatInProject: (projectId: string) => void
   deleteChat: (chatId: string) => Promise<void>
   reset: () => void
 }
@@ -56,9 +59,12 @@ export const useChatStore = create<ChatState>((set, get) => {
     const existing = get().chatId
     if (existing) return existing
 
-    const chat = await createChat()
-    set({ chatId: chat.id })
+    const chat = await createChat(get().pendingProjectId ?? undefined)
+    set({ chatId: chat.id, pendingProjectId: null })
     get().loadChats()
+    // A new chat changes its project's chatCount, which drives the sidebar
+    // badge and the "+ New chat" / "+ New project" swap.
+    useProjectStore.getState().loadProjects()
     return chat.id
   }
 
@@ -105,6 +111,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     chatId: null,
     chats: [],
     isLoadingChat: false,
+    pendingProjectId: null,
 
     sendMessage: async (content) => {
       if (get().isStreaming) return
@@ -174,7 +181,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     selectChat: async (chatId) => {
       if (get().isStreaming || get().chatId === chatId) return
-      set({ isLoadingChat: true, error: null })
+      set({ isLoadingChat: true, error: null, pendingProjectId: null })
       try {
         const chat = await getChat(chatId)
         set({ chatId: chat.id, turns: messagesToTurns(chat.messages) })
@@ -187,16 +194,15 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     startNewChat: () => {
       if (get().isStreaming) return
-      set({ chatId: null, turns: [], error: null })
+      set({ chatId: null, turns: [], error: null, pendingProjectId: null })
     },
 
-    startNewChatInProject: async (projectId) => {
-      try {
-        const chat = await createChat(projectId)
-        set({ chatId: chat.id, turns: [], error: null, chats: [chat, ...get().chats] })
-      } catch (error) {
-        set({ error: error instanceof Error ? error.message : 'Could not create the chat' })
-      }
+    // Records the project rather than creating the chat, so walking away
+    // after clicking leaves no empty chat holding one of the project's slots.
+    // ensureChatId picks pendingProjectId up on the first send.
+    startNewChatInProject: (projectId) => {
+      if (get().isStreaming) return
+      set({ chatId: null, turns: [], error: null, pendingProjectId: projectId })
     },
 
     deleteChat: async (chatId) => {
@@ -210,13 +216,15 @@ export const useChatStore = create<ChatState>((set, get) => {
         chats: state.chats.filter((chat) => chat.id !== chatId),
         ...(state.chatId === chatId ? { chatId: null, turns: [] } : {}),
       }))
+      // The deleted chat may have been inside a project, so its count moved.
+      useProjectStore.getState().loadProjects()
     },
 
     // Called on sign-out so the next user never sees the previous one's
     // messages still on screen.
     reset: () => {
       activeAbortController?.abort()
-      set({ turns: [], chatId: null, chats: [], error: null, isStreaming: false, streamingTurnId: null })
+      set({ turns: [], chatId: null, chats: [], error: null, isStreaming: false, streamingTurnId: null, pendingProjectId: null })
     },
   }
 })
