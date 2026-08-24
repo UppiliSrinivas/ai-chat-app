@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_EDITS_PER_MESSAGE, useChatStore } from './useChatStore'
 import { createChat, deleteChat, getChat, listChats } from '../api/chats'
+import { listProjects } from '../api/projects'
 import { streamChat } from '../api/streamChat'
 
 vi.mock('../api/chats', () => ({
@@ -12,6 +13,15 @@ vi.mock('../api/chats', () => ({
 
 vi.mock('../api/streamChat', () => ({ streamChat: vi.fn() }))
 
+// The store refreshes project chat counts after a chat is created or deleted;
+// stubbing the API keeps that off the network.
+vi.mock('../api/projects', () => ({
+  createProject: vi.fn(),
+  deleteProject: vi.fn(),
+  listProjects: vi.fn().mockResolvedValue([]),
+  renameProject: vi.fn(),
+}))
+
 const initialState = {
   turns: [],
   isStreaming: false,
@@ -20,6 +30,7 @@ const initialState = {
   chatId: null,
   chats: [],
   isLoadingChat: false,
+  pendingProjectId: null,
 }
 
 beforeEach(() => {
@@ -28,6 +39,7 @@ beforeEach(() => {
   vi.mocked(listChats).mockResolvedValue([])
   vi.mocked(createChat).mockResolvedValue({ id: 'chat-1', title: 'New chat', projectId: null, messageCount: 0, updatedAt: '', messages: [] })
   vi.mocked(streamChat).mockResolvedValue(undefined)
+  vi.mocked(listProjects).mockResolvedValue([])
 })
 
 describe('sendMessage', () => {
@@ -98,6 +110,14 @@ describe('sendMessage', () => {
     await useChatStore.getState().sendMessage('hello')
 
     expect(listChats).toHaveBeenCalled()
+  })
+
+  // The sidebar's "3/10" badge and its "+ New chat" / "+ New project" swap both
+  // read chatCount, so they go stale for the session without this.
+  it('refreshes project counts once the chat exists', async () => {
+    await useChatStore.getState().sendMessage('hello')
+
+    expect(listProjects).toHaveBeenCalled()
   })
 })
 
@@ -239,10 +259,54 @@ describe('startNewChat', () => {
 })
 
 describe('startNewChatInProject', () => {
-  it('creates a chat inside the given project', async () => {
-    await useChatStore.getState().startNewChatInProject('p1')
+  // Creating eagerly would leave a permanent empty chat — and burn one of the
+  // project's ten slots — for anyone who clicks and then walks away.
+  it('creates no chat until the first message is sent', () => {
+    useChatStore.getState().startNewChatInProject('p1')
+
+    expect(createChat).not.toHaveBeenCalled()
+    expect(useChatStore.getState()).toMatchObject({ chatId: null, turns: [], pendingProjectId: 'p1' })
+  })
+
+  it('creates the chat inside that project on the first send', async () => {
+    useChatStore.getState().startNewChatInProject('p1')
+
+    await useChatStore.getState().sendMessage('hello')
 
     expect(createChat).toHaveBeenCalledExactlyOnceWith('p1')
+    expect(useChatStore.getState().pendingProjectId).toBeNull()
+  })
+
+  it('does nothing while streaming', () => {
+    useChatStore.setState({ chatId: 'chat-1', isStreaming: true })
+
+    useChatStore.getState().startNewChatInProject('p1')
+
+    expect(useChatStore.getState()).toMatchObject({ chatId: 'chat-1', pendingProjectId: null })
+  })
+
+  it('is abandoned by starting a loose new chat', () => {
+    useChatStore.getState().startNewChatInProject('p1')
+
+    useChatStore.getState().startNewChat()
+
+    expect(useChatStore.getState().pendingProjectId).toBeNull()
+  })
+
+  it('is abandoned by opening an existing chat', async () => {
+    vi.mocked(getChat).mockResolvedValue({
+      id: 'chat-9',
+      title: 'Saved chat',
+      projectId: null,
+      messageCount: 0,
+      updatedAt: '',
+      messages: [],
+    })
+    useChatStore.getState().startNewChatInProject('p1')
+
+    await useChatStore.getState().selectChat('chat-9')
+
+    expect(useChatStore.getState().pendingProjectId).toBeNull()
   })
 })
 
@@ -274,6 +338,15 @@ describe('deleteChat', () => {
     expect(useChatStore.getState()).toMatchObject({ chatId: null, turns: [] })
   })
 
+  it('refreshes project counts, since the chat may have been inside one', async () => {
+    useChatStore.setState({ chats: [{ id: 'a', title: 'A', projectId: 'p1', messageCount: 0, updatedAt: '' }] })
+    vi.mocked(deleteChat).mockResolvedValue(undefined)
+
+    await useChatStore.getState().deleteChat('a')
+
+    expect(listProjects).toHaveBeenCalled()
+  })
+
   it('leaves the open chat alone when a different chat is deleted', async () => {
     useChatStore.setState({
       chatId: 'b',
@@ -299,6 +372,7 @@ describe('reset', () => {
       error: 'stale',
       isStreaming: true,
       streamingTurnId: 't',
+      pendingProjectId: 'p1',
     })
 
     useChatStore.getState().reset()
@@ -310,6 +384,7 @@ describe('reset', () => {
       error: null,
       isStreaming: false,
       streamingTurnId: null,
+      pendingProjectId: null,
     })
   })
 })
