@@ -9,6 +9,71 @@
   display: none;
 }
 
+/* Rows, dialogs and the project accordion all animate on mount, so React
+   mounting the element is the only trigger — no state or timers involved. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
+
+/* `fr` is animatable, so the panel opens from its own content height without
+   measuring anything in JS. The child needs min-height:0 or it refuses to
+   shrink below its intrinsic height and the row snaps open instead. */
+@keyframes accordion-in {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.fade-in {
+  animation: fade-in 200ms ease-out both;
+}
+
+.dialog-backdrop {
+  animation: backdrop-in 150ms ease-out both;
+}
+
+.dialog-panel {
+  animation: dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.accordion-panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: accordion-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.accordion-panel > * {
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;

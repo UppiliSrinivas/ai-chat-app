@@ -26,14 +26,27 @@ vi.mock('../../components/message', () => ({
 }))
 
 vi.mock('../../components/sidebar/ChatSidebar', () => ({
-  default: ({ isOpen, user, projects, projectError, onSignOut, onUpgrade, onNewProject, onDeleteProject }: {
+  default: ({
+    isOpen,
+    user,
+    projects,
+    projectError,
+    pendingProjectId,
+    onSignOut,
+    onUpgrade,
+    onCreateProject,
+    onRenameProject,
+    onDeleteProject,
+  }: {
     isOpen: boolean
     user: { email: string | null } | null
     projects: { id: string }[]
     projectError: string | null
+    pendingProjectId: string | null
     onSignOut: () => void
     onUpgrade: () => void
-    onNewProject: () => void
+    onCreateProject: (name: string) => void
+    onRenameProject: (projectId: string, name: string) => void
     onDeleteProject: (projectId: string) => void
   }) => (
     <div>
@@ -41,9 +54,11 @@ vi.mock('../../components/sidebar/ChatSidebar', () => ({
       <span>account {user?.email ?? 'none'}</span>
       <span>projects {projects.length}</span>
       <span>project error {projectError ?? 'none'}</span>
+      <span>pending project {pendingProjectId ?? 'none'}</span>
       <button type="button" onClick={onSignOut}>sidebar sign out</button>
       <button type="button" onClick={onUpgrade}>sidebar upgrade</button>
-      <button type="button" onClick={onNewProject}>sidebar new project</button>
+      <button type="button" onClick={() => onCreateProject('Research')}>sidebar create project</button>
+      <button type="button" onClick={() => onRenameProject('p1', 'Deep research')}>sidebar rename project</button>
       <button type="button" onClick={() => onDeleteProject('p1')}>sidebar delete project</button>
     </div>
   ),
@@ -218,6 +233,38 @@ describe('ChatPage', () => {
 
     expect(removeProject).toHaveBeenCalledExactlyOnceWith('p1')
     await waitFor(() => expect(loadChats).toHaveBeenCalledOnce())
+  })
+
+  it('creates a project under the name the sidebar collected', async () => {
+    const addProject = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    useProjectStore.setState({ addProject })
+
+    render(<ChatPage />)
+    await user.click(screen.getByRole('button', { name: 'sidebar create project' }))
+
+    expect(addProject).toHaveBeenCalledExactlyOnceWith('Research')
+  })
+
+  it('renames a project', async () => {
+    const renameProject = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    useProjectStore.setState({ renameProject })
+
+    render(<ChatPage />)
+    await user.click(screen.getByRole('button', { name: 'sidebar rename project' }))
+
+    expect(renameProject).toHaveBeenCalledExactlyOnceWith('p1', 'Deep research')
+  })
+
+  // The chat isn't created until the first message, so the sidebar needs to
+  // know which project is holding the draft to show it there.
+  it('hands the pending project to the sidebar', () => {
+    useChatStore.setState({ pendingProjectId: 'p1' })
+
+    render(<ChatPage />)
+
+    expect(screen.getByText('pending project p1')).toBeInTheDocument()
   })
 
   it('hands a project failure to the sidebar', () => {
