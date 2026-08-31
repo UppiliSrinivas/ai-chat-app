@@ -52,6 +52,24 @@ CORS is pinned to an explicit allowlist — never widen to `"*"`, the server hol
 
 **In production the client must reach the API same-origin.** The session cookie is `sameSite=lax`, so a browser won't attach it to genuinely cross-site requests — pointing the deployed client straight at the Render URL breaks auth in a way that looks like a backend bug (sign-in succeeds, every later call 401s). `client/vercel.json` rewrites `/api/*` to Render for exactly this reason, and the client's `VITE_API_BASE_URL` must be `/api`. Don't remove the rewrite.
 
+## Coding standards
+
+Seven habits, both packages. Each one buys the same thing: the *next* change is easier, and the fifty after it. None of them are about writing clever code — mostly they're about writing less of it.
+
+1. **Keep the main path easy to follow.** Guard-clause the exceptional cases at the top and return early, so the body of a function reads as the normal case. No nested ternaries and no ternary inside a template literal — name the derived value above the JSX and use it.
+
+2. **Name things by meaning.** `looseChats`, not `filtered`; `streamedReply`, not `data`. The name says what the thing holds or does; booleans read as predicates (`isStreaming`, `hasError`). A name that needs the line below it to be understood is the wrong name.
+
+3. **Keep external systems behind a boundary.** Gemini's wire shape stops at `lib/history/`, Mongo's at `models/`, the server's at `client/src/api/`. A provider's field names never travel past the module that speaks to it — that boundary is exactly why adding a provider is a new module instead of a rewrite.
+
+4. **Make invalid states harder to represent.** Prefer a discriminated union over a bag of optional fields — `PendingDelete` is `{ kind: 'chat' } | { kind: 'project' }` so a chat delete can't carry a `chatCount`. If a call site is passing `undefined`, `null`, or a no-op to satisfy a type, the type is describing a state that shouldn't exist.
+
+5. **Separate decisions from actions.** Work out *what* should happen apart from *doing* it: `lib/chat-request/` validates and windows history as a pure function, then the route streams. A decision reached inside a click handler or next to a database write can only be tested by triggering the side effect.
+
+6. **Make errors useful.** An error carries a `code` a machine can branch on next to a `message` a human can read — `CHAT_FULL` and `PROJECT_FULL` exist so the client can tell a size cap apart from the duplicate-key 409. **Known gap:** `client/src/api/client.ts` currently keeps only `message` and drops `code`, so the client can't actually make that distinction yet. Fix it when you next touch that file rather than adding a second string-matching workaround.
+
+7. **Keep changes focused.** One reason for a pull request, small enough that a reviewer can hold it in their head. Unrelated cleanup you spot along the way is a separate commit — bundling it is how a one-line fix turns into an afternoon of review.
+
 ## Architecture
 
 Express 5 + TypeScript, ESM with `module: NodeNext`: relative imports carry a `.js` extension even though the sources are `.ts` (`import { env } from "./config/env.js"`).

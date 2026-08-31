@@ -29,6 +29,8 @@ Query by accessible role/name (`getByRole('button', { name: 'Send message' })`) 
 
 ## Coding rules
 
+The seven habits in the root `CLAUDE.md` ("Coding standards") apply here too — main path first, names that mean something, boundaries around external systems, invalid states made unrepresentable, decisions apart from actions, errors with a `code`, focused changes. What follows is the client-specific detail on top of those.
+
 **File size — 400 lines is the hard ceiling, 300 is where you start looking to split.** No lower bound: a clean 40-line component is finished, not unfinished. When a file crosses ~300 lines, extract a sub-component, hook, or `lib/` helper rather than compressing formatting to fit.
 
 **The line limit is a proxy — readability is the real rule.** A component should read top-to-bottom in one pass. Use early returns over nested ternaries, name derived values before the JSX, one idea per nesting level, no clever one-liners that need a second read.
