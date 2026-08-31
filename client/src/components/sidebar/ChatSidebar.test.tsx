@@ -16,7 +16,8 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
     onDelete: vi.fn(),
     onSignOut: vi.fn(),
     onUpgrade: vi.fn(),
-    onNewProject: vi.fn(),
+    onCreateProject: vi.fn(),
+    onRenameProject: vi.fn(),
     onNewChatInProject: vi.fn(),
     onDeleteProject: vi.fn(),
   }
@@ -28,6 +29,7 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
       user={null}
       projects={[]}
       projectError={null}
+      pendingProjectId={null}
       {...handlers}
       {...props}
     />,
@@ -153,6 +155,7 @@ describe('ChatSidebar', () => {
   })
 
   const project = { id: 'p1', name: 'Research', chatCount: 3, updatedAt: '' }
+  const filedChat = { id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }
 
   it('lists projects with their chat counts', () => {
     setup({ isOpen: true, projects: [project] })
@@ -161,27 +164,72 @@ describe('ChatSidebar', () => {
     expect(screen.getByText('3/10')).toBeInTheDocument()
   })
 
-  it('starts a new chat inside a project', async () => {
-    const { onNewChatInProject, user } = setup({ isOpen: true, projects: [project] })
+  // Creating a project used to make an unnamed "New project" on one click,
+  // with no way to name it — the name is the whole point of a project.
+  it('names a project before creating it', async () => {
+    const { onCreateProject, user } = setup({ isOpen: true })
 
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+    await user.type(screen.getByRole('textbox', { name: 'Project name' }), 'Research')
+    await user.click(screen.getByRole('button', { name: 'Create project' }))
+
+    expect(onCreateProject).toHaveBeenCalledExactlyOnceWith('Research')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('creates nothing when the name dialog is cancelled', async () => {
+    const { onCreateProject, user } = setup({ isOpen: true })
+
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onCreateProject).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renames a project from its current name', async () => {
+    const { onRenameProject, user } = setup({ isOpen: true, projects: [project] })
+
+    await user.click(screen.getByRole('button', { name: 'Rename project "Research"' }))
+    const input = screen.getByRole('textbox', { name: 'Project name' })
+    expect(input).toHaveValue('Research')
+
+    await user.clear(input)
+    await user.type(input, 'Deep research{Enter}')
+
+    expect(onRenameProject).toHaveBeenCalledExactlyOnceWith('p1', 'Deep research')
+  })
+
+  it('lists a project’s chats when the project is clicked', async () => {
+    const { user } = setup({ isOpen: true, projects: [project], chats: [...chats, filedChat] })
+
+    await user.click(screen.getByRole('button', { name: /^Research/ }))
+
+    expect(screen.getByRole('button', { name: 'Filed chat' })).toBeInTheDocument()
+  })
+
+  it('selects a project chat and closes the mobile drawer', async () => {
+    const { onSelect, onClose, user } = setup({
+      isOpen: true,
+      projects: [project],
+      chats: [...chats, filedChat],
+    })
+
+    await user.click(screen.getByRole('button', { name: /^Research/ }))
+    await user.click(screen.getByRole('button', { name: 'Filed chat' }))
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('c')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('starts a new chat inside a project and closes the mobile drawer', async () => {
+    const { onNewChatInProject, onClose, user } = setup({ isOpen: true, projects: [project] })
+
+    await user.click(screen.getByRole('button', { name: /^Research/ }))
     await user.click(screen.getByRole('button', { name: '+ New chat' }))
 
     expect(onNewChatInProject).toHaveBeenCalledExactlyOnceWith('p1')
-  })
-
-  // A full project can't take another chat, so the only forward action left
-  // is starting a new project.
-  it('offers a new project instead of a new chat when full', async () => {
-    const { onNewProject, onNewChatInProject, user } = setup({
-      isOpen: true,
-      projects: [{ ...project, chatCount: 10 }],
-    })
-
-    expect(screen.queryByRole('button', { name: '+ New chat' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: '+ New project' }))
-
-    expect(onNewProject).toHaveBeenCalledOnce()
-    expect(onNewChatInProject).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   // Deleting a project destroys its chats, so the dialog has to say the
@@ -224,23 +272,30 @@ describe('ChatSidebar', () => {
   // otherwise it looks unfiled, and the delete dialog's "and its 3 chats"
   // counts rows the user can see nowhere.
   it('keeps a project chat out of the loose list', () => {
-    setup({
-      isOpen: true,
-      projects: [project],
-      chats: [...chats, { id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }],
-    })
+    setup({ isOpen: true, projects: [project], chats: [...chats, filedChat] })
 
     expect(screen.queryByRole('button', { name: 'Filed chat' })).toBeNull()
     expect(screen.getByRole('button', { name: 'First chat' })).toBeInTheDocument()
   })
 
   it('says there are no chats when every chat is inside a project', () => {
-    setup({
-      isOpen: true,
-      projects: [project],
-      chats: [{ id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }],
-    })
+    setup({ isOpen: true, projects: [project], chats: [filedChat] })
 
     expect(screen.getByText('No chats yet')).toBeInTheDocument()
+  })
+
+  // Deleting a chat that lives inside a project must go through the same
+  // confirm dialog as a loose one, not delete on the first click.
+  it('confirms before deleting a chat inside a project', async () => {
+    const { onDelete, user } = setup({ isOpen: true, projects: [project], chats: [filedChat] })
+
+    await user.click(screen.getByRole('button', { name: /^Research/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete "Filed chat"' }))
+
+    expect(onDelete).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith('c')
   })
 })

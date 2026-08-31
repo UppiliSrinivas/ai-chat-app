@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Folder, LogIn, LogOut, Plus, Trash2, X } from 'lucide-react'
+import { LogIn, LogOut, Plus, X } from 'lucide-react'
 import type { User } from '../../api/auth'
 import type { ChatSummary } from '../../api/chats'
 import type { ProjectSummary } from '../../api/projects'
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog'
+import PromptDialog from '../prompt-dialog/PromptDialog'
+import ChatRow from './ChatRow'
+import ProjectList from './ProjectList'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
 
 export type ChatSidebarProps = {
   chats: ChatSummary[]
@@ -14,15 +16,60 @@ export type ChatSidebarProps = {
   user: User | null
   projects: ProjectSummary[]
   projectError: string | null
+  pendingProjectId: string | null
   onClose: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
   onDelete: (chatId: string) => void
   onSignOut: () => void
   onUpgrade: () => void
-  onNewProject: () => void
+  onCreateProject: (name: string) => void
+  onRenameProject: (projectId: string, name: string) => void
   onNewChatInProject: (projectId: string) => void
   onDeleteProject: (projectId: string) => void
+}
+
+type PendingDelete =
+  | { kind: 'chat'; id: string; title: string }
+  | { kind: 'project'; id: string; name: string; chatCount: number }
+
+type ProjectPrompt = { mode: 'create' } | { mode: 'rename'; id: string; name: string }
+
+// What the confirm dialog should say, worked out in one place rather than as
+// three ternaries spread across the JSX.
+function describeDelete(pending: PendingDelete | null) {
+  if (!pending) return null
+
+  if (pending.kind === 'chat') {
+    return {
+      title: `Delete "${pending.title}"?`,
+      body: "This permanently deletes the chat and its messages. This can't be undone.",
+      confirmLabel: 'Delete',
+    }
+  }
+
+  const chats = pending.chatCount === 1 ? '1 chat' : `${pending.chatCount} chats`
+  return {
+    title: `Delete "${pending.name}"?`,
+    body: `This permanently deletes the project and its ${chats}. This can't be undone.`,
+    confirmLabel: 'Delete project and chats',
+  }
+}
+
+// Same for the name dialog: create and rename differ in wording, not behaviour.
+function describePrompt(prompt: ProjectPrompt | null) {
+  if (!prompt) return null
+
+  if (prompt.mode === 'rename') {
+    return { title: 'Rename project', initialValue: prompt.name, submitLabel: 'Save', description: undefined }
+  }
+
+  return {
+    title: 'New project',
+    initialValue: '',
+    submitLabel: 'Create project',
+    description: 'Chats you start inside it are kept together.',
+  }
 }
 
 export default function ChatSidebar({
@@ -32,26 +79,35 @@ export default function ChatSidebar({
   user,
   projects,
   projectError,
+  pendingProjectId,
   onClose,
   onSelect,
   onNewChat,
   onDelete,
   onSignOut,
   onUpgrade,
-  onNewProject,
+  onCreateProject,
+  onRenameProject,
   onNewChatInProject,
   onDeleteProject,
 }: ChatSidebarProps) {
   // What the confirm dialog is currently asking about, or null when closed.
-  const [pendingDelete, setPendingDelete] = useState<
-    { kind: 'chat'; id: string; title: string } | { kind: 'project'; id: string; name: string; chatCount: number } | null
-  >(null)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  // Which project the name dialog is for — a new one, or one being renamed.
+  const [projectPrompt, setProjectPrompt] = useState<ProjectPrompt | null>(null)
 
   const confirmDelete = () => {
     if (!pendingDelete) return
     if (pendingDelete.kind === 'chat') onDelete(pendingDelete.id)
     else onDeleteProject(pendingDelete.id)
     setPendingDelete(null)
+  }
+
+  const submitProjectName = (name: string) => {
+    if (!projectPrompt) return
+    if (projectPrompt.mode === 'create') onCreateProject(name)
+    else onRenameProject(projectPrompt.id, name)
+    setProjectPrompt(null)
   }
 
   // Off-screen but still in the DOM on mobile, so its buttons stay tab-
@@ -70,25 +126,36 @@ export default function ChatSidebar({
     onClose()
   }
 
+  const handleNewChatInProject = (projectId: string) => {
+    onNewChatInProject(projectId)
+    onClose()
+  }
+
   // Chats inside a project are listed under it, so showing them here too would
   // make the same chat look like it belongs nowhere.
   const looseChats = chats.filter((chat) => chat.projectId === null)
+  const deletePrompt = describeDelete(pendingDelete)
+  const namePrompt = describePrompt(projectPrompt)
 
   return (
     <>
       {isOpen && (
-        <div onClick={onClose} className="fixed inset-0 z-40 bg-black/60 md:hidden" aria-hidden="true" />
+        <div
+          onClick={onClose}
+          className="fade-in fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] md:hidden"
+          aria-hidden="true"
+        />
       )}
 
       <aside
         inert={isHidden}
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-300 ease-out md:static md:z-auto md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center gap-2 p-3">
           <button
             type="button"
             onClick={handleNewChat}
-            className="flex flex-1 items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+            className="flex flex-1 items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
           >
             <Plus size={16} />
             New chat
@@ -97,107 +164,53 @@ export default function ChatSidebar({
             type="button"
             onClick={onClose}
             aria-label="Close sidebar"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="px-2 pb-2">
-          <div className="flex items-center justify-between px-3 py-1">
-            <span className="text-xs font-medium text-zinc-500">Projects</span>
-            <button
-              type="button"
-              onClick={onNewProject}
-              aria-label="New project"
-              className="flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
+        <div className="no-scrollbar flex-1 overflow-y-auto pb-3">
+          <ProjectList
+            projects={projects}
+            chats={chats}
+            activeChatId={activeChatId}
+            pendingProjectId={pendingProjectId}
+            error={projectError}
+            onNewProject={() => setProjectPrompt({ mode: 'create' })}
+            onRenameProject={(project) =>
+              setProjectPrompt({ mode: 'rename', id: project.id, name: project.name })
+            }
+            onDeleteProject={(project) =>
+              setPendingDelete({
+                kind: 'project',
+                id: project.id,
+                name: project.name,
+                chatCount: project.chatCount,
+              })
+            }
+            onSelectChat={handleSelect}
+            onDeleteChat={(chat) => setPendingDelete({ kind: 'chat', id: chat.id, title: chat.title })}
+            onNewChatInProject={handleNewChatInProject}
+          />
 
-          {projectError && (
-            <p role="alert" className="px-3 py-1 text-xs text-red-400">
-              {projectError}
-            </p>
-          )}
+          <nav className="px-2 pt-2">
+            <p className="px-3 py-1 text-xs font-medium tracking-wide text-zinc-500 uppercase">Chats</p>
 
-          {projects.map((project) => (
-            <div key={project.id} className="group/project relative">
-              <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300">
-                <Folder size={14} className="shrink-0" />
-                <span className="flex-1 truncate">{project.name}</span>
-                <span className="text-xs text-zinc-500">
-                  {project.chatCount}/{MAX_CHATS_PER_PROJECT}
-                </span>
+            {looseChats.length === 0 && <p className="px-3 py-2 text-sm text-zinc-600">No chats yet</p>}
+
+            {looseChats.map((chat) => (
+              <div key={chat.id} className="fade-in">
+                <ChatRow
+                  title={chat.title}
+                  isActive={chat.id === activeChatId}
+                  onSelect={() => handleSelect(chat.id)}
+                  onDelete={() => setPendingDelete({ kind: 'chat', id: chat.id, title: chat.title })}
+                />
               </div>
-
-              {/* A full project can't take another chat, so it offers the only
-                  action that still moves the user forward. */}
-              {project.chatCount >= MAX_CHATS_PER_PROJECT ? (
-                <button
-                  type="button"
-                  onClick={onNewProject}
-                  className="ml-8 px-3 pb-1 text-left text-xs text-zinc-500 hover:text-zinc-300"
-                >
-                  + New project
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onNewChatInProject(project.id)}
-                  className="ml-8 px-3 pb-1 text-left text-xs text-zinc-500 hover:text-zinc-300"
-                >
-                  + New chat
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setPendingDelete({
-                    kind: 'project',
-                    id: project.id,
-                    name: project.name,
-                    chatCount: project.chatCount,
-                  })
-                }
-                aria-label={`Delete project "${project.name}"`}
-                className="absolute top-2 right-1.5 flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover/project:opacity-100"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+            ))}
+          </nav>
         </div>
-
-        <nav className="no-scrollbar flex-1 overflow-y-auto px-2 pb-3">
-          {looseChats.length === 0 && (
-            <p className="px-3 py-2 text-sm text-zinc-500">No chats yet</p>
-          )}
-          {looseChats.map((chat) => (
-            <div key={chat.id} className="group relative">
-              <button
-                type="button"
-                onClick={() => handleSelect(chat.id)}
-                className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 ${chat.id === activeChatId ? 'bg-zinc-800 text-zinc-100' : ''}`}
-              >
-                {chat.title}
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setPendingDelete({ kind: 'chat', id: chat.id, title: chat.title })
-                }}
-                aria-label={`Delete "${chat.title}"`}
-                className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover:opacity-100"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </nav>
 
         <div className="border-t border-zinc-800 p-3">
           <p className="truncate px-1 pb-2 text-xs text-zinc-500">{user?.email ?? 'Guest'}</p>
@@ -207,7 +220,7 @@ export default function ChatSidebar({
             <button
               type="button"
               onClick={onUpgrade}
-              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
             >
               <LogIn size={16} />
               Sign in to save chats
@@ -216,7 +229,7 @@ export default function ChatSidebar({
             <button
               type="button"
               onClick={onSignOut}
-              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
+              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
             >
               <LogOut size={16} />
               Sign out
@@ -224,19 +237,23 @@ export default function ChatSidebar({
           )}
         </div>
 
+        <PromptDialog
+          isOpen={namePrompt !== null}
+          title={namePrompt?.title ?? ''}
+          label="Project name"
+          placeholder="Research notes"
+          description={namePrompt?.description}
+          initialValue={namePrompt?.initialValue ?? ''}
+          submitLabel={namePrompt?.submitLabel}
+          onSubmit={submitProjectName}
+          onCancel={() => setProjectPrompt(null)}
+        />
+
         <ConfirmDialog
-          isOpen={pendingDelete !== null}
-          title={
-            pendingDelete?.kind === 'project'
-              ? `Delete "${pendingDelete.name}"?`
-              : `Delete "${pendingDelete?.title ?? ''}"?`
-          }
-          body={
-            pendingDelete?.kind === 'project'
-              ? `This permanently deletes the project and its ${pendingDelete.chatCount} chat${pendingDelete.chatCount === 1 ? '' : 's'}. This can't be undone.`
-              : "This permanently deletes the chat and its messages. This can't be undone."
-          }
-          confirmLabel={pendingDelete?.kind === 'project' ? 'Delete project and chats' : 'Delete'}
+          isOpen={deletePrompt !== null}
+          title={deletePrompt?.title ?? ''}
+          body={deletePrompt?.body ?? ''}
+          confirmLabel={deletePrompt?.confirmLabel}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
         />

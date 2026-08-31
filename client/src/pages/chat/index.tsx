@@ -24,6 +24,7 @@ export default function ChatPage() {
     const startNewChat = useChatStore((state) => state.startNewChat)
     const startNewChatInProject = useChatStore((state) => state.startNewChatInProject)
     const deleteChat = useChatStore((state) => state.deleteChat)
+    const pendingProjectId = useChatStore((state) => state.pendingProjectId)
     const user = useAuthStore((state) => state.user)
     const signOut = useAuthStore((state) => state.signOut)
     const startUpgrade = useAuthStore((state) => state.startUpgrade)
@@ -31,6 +32,7 @@ export default function ChatPage() {
     const projectError = useProjectStore((state) => state.error)
     const loadProjects = useProjectStore((state) => state.loadProjects)
     const addProject = useProjectStore((state) => state.addProject)
+    const renameProject = useProjectStore((state) => state.renameProject)
     const removeProject = useProjectStore((state) => state.removeProject)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -78,7 +80,9 @@ export default function ChatPage() {
                 onUpgrade={startUpgrade}
                 projects={projects}
                 projectError={projectError}
-                onNewProject={() => addProject()}
+                pendingProjectId={pendingProjectId}
+                onCreateProject={addProject}
+                onRenameProject={renameProject}
                 onNewChatInProject={startNewChatInProject}
                 onDeleteProject={handleDeleteProject}
             />

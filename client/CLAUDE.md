@@ -57,7 +57,9 @@ The seven habits in the root `CLAUDE.md` ("Coding standards") apply here too —
 
 **Components are reusable and presentational**, driven by props — no reaching for global state or fetching their own data. Push data loading/streaming to a hook or the top of the tree; split any component that's grown a second responsibility.
 
-**Destructive actions go through `ConfirmDialog`** — never an inline arm-to-confirm. A project delete cascades to its chats, so its dialog states the chat count explicitly rather than a generic warning.
+**Destructive actions go through `ConfirmDialog`** — never an inline arm-to-confirm. A project delete cascades to its chats, so its dialog states the chat count explicitly rather than a generic warning. Naming something goes through `PromptDialog` (create/rename a project); both portal to `body`, since `position: fixed` resolves against the sidebar's transform otherwise.
+
+**Motion lives in `index.css`, not in component state** — `.fade-in`, `.dialog-backdrop`, `.dialog-panel` and `.accordion-panel` are mount-triggered keyframes, so React mounting the element is the only trigger and there are no timers to leak. The accordion animates `grid-template-rows: 0fr → 1fr`, which opens to the content's own height with no JS measurement. A `prefers-reduced-motion` block at the top of the file neutralizes every animation and transition — keep new motion expressible through these classes so that one block still covers it.
 
 ## Talking to the server
 
@@ -73,8 +75,8 @@ Response is SSE, not JSON: multi-line `data:` fields, CRLF delimiters, events sp
 
 ## State of this directory
 
-Chat UI is built: `App.tsx` (react-router), `pages/chat`, `pages/signin`, `components/composser`, `components/message/*` (markdown + syntax-highlighted code via `react-markdown` / `highlight.js`), `components/sidebar/ChatSidebar.tsx`, `hooks/useChatStore.ts` + `hooks/useAuthStore.ts` (Zustand), `api/streamChat.ts` (SSE parser). Earlier notes describing this directory as the stock Vite template are stale — ignore them.
+Chat UI is built: `App.tsx` (react-router), `pages/chat`, `pages/signin`, `components/composser`, `components/message/*` (markdown + syntax-highlighted code via `react-markdown` / `highlight.js`), `components/sidebar/*` (`ChatSidebar` shell, `ProjectList` accordion, `ChatRow`), `components/prompt-dialog/PromptDialog.tsx`, `hooks/useChatStore.ts` + `hooks/useAuthStore.ts` (Zustand), `api/streamChat.ts` (SSE parser). Earlier notes describing this directory as the stock Vite template are stale — ignore them.
 
-Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. Everything has colocated tests — both stores, all three `api/` modules, every component, `App.tsx`, and both pages.
+Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. Projects are named on creation and renameable; a project row expands to list its own chats, including a placeholder row for a chat that has been started but not yet sent (the chat is only created on the first message, so without it the click looks inert). Everything has colocated tests — both stores, all three `api/` modules, every component, `App.tsx`, and both pages.
 
 All source is TypeScript; `tsconfig.json` exists.
