@@ -162,3 +162,115 @@ expected to clear it rather than lower the bar.
 - Detail outside the recent window is permanently lost from the model's view.
   That is the point of compaction, but it means the model can no longer quote
   an early message verbatim.
+
+---
+
+# Amendments — 2026-09-01
+
+The projects, limits and `ConfirmDialog` work in this spec shipped. Summarization
+was never built: nothing in `lib/summary/`, no `summary` field, no
+`SUMMARIZE_EVERY`. These amendments correct the parts of the original plan that
+did not survive contact with the code, and record the decisions taken before
+build.
+
+## A1. When summarization runs
+
+Inside the request handler, after `streamSSE` returns and the assistant turn is
+stored — as the original spec requires, because work dispatched outside the
+request can be killed when a Render instance spins down. The response has already
+been flushed, so the user waits for nothing.
+
+If that attempt never happens or never finishes — deploy, restart, failure — the
+next request for that chat finds the threshold still crossed and summarizes
+before building the model call, subject to the backoff in A4. That fallback is
+what makes the summary eventually correct; the in-request attempt only keeps the
+user from waiting for it.
+
+## A2. Blocks align to answers, not to a message number
+
+The original threshold counts raw messages. `gemini.chat.route.ts` stores an
+assistant turn only when the model returned text, so a failed or instantly
+aborted turn leaves a user message with no answer after it. The count goes odd,
+and every later multiple of ten lands mid-exchange — the summary would record a
+question and never its answer, permanently.
+
+Summarize through the **last assistant message** at or below the threshold, so a
+block always ends on a completed exchange:
+
+```
+messages:  1 you  2 AI  3 you  (failed, no AI turn stored)  4 you  5 AI ...
+at 10:     do not cut at message 10 if it is a question;
+           cut at the last AI answer at or below it
+```
+
+## A3. The threshold is read after the answer is stored
+
+The assistant turn is appended with `Chat.updateOne`, not through the loaded
+document, so `chat.messages.length` in the handler is one behind at exactly the
+point the threshold is tested. Derive the count from the write or re-read it.
+The stale document is wrong by one at the only boundary that matters.
+
+## A4. Failure and empty results fall back to stored messages
+
+On any summarize error, or a blank or whitespace-only result, the summary is
+neither stored nor used: `throughMessageCount` does not advance and the request
+proceeds on the stored raw messages exactly as it does today. A failed summary
+must never degrade an answer or fail a user's message.
+
+Repeated failure must not become a per-message tax. Track consecutive failures on
+the chat; after three, stop attempting until the chat crosses the next threshold
+— another `SUMMARIZE_EVERY` messages — instead of retrying on every turn. Without
+this, a bad key or an exhausted quota adds a doomed call and its latency to every
+message indefinitely.
+
+## A5. The summary is data, never instruction
+
+The summary rides in `config.systemInstruction`, which is where a model looks for
+its orders. User text folded into a summary would arrive there carrying authority
+it never had: "ignore your previous instructions", typed by a user, becomes a
+system instruction two turns later.
+
+The summary is wrapped in framing that marks it as an inert record of what was
+discussed. A test covers an injection attempt surviving a fold.
+
+## A6. One summarize call has a ceiling
+
+A single call ingests at most 20 messages, two blocks. A longer backlog — chats
+created under the old cap hold up to 100 — catches up over successive turns
+rather than folding an entire history in one oversized call.
+
+## A7. Concurrent writes use compare-and-set
+
+The in-request summarize and the next request's fallback can overlap, as can two
+browser tabs. Write with
+`updateOne({ _id, "summary.throughMessageCount": expected }, …)` so a late writer
+whose expectation no longer holds loses, instead of replacing a newer summary
+with an older one. This bounds correctness, not spend: both calls still cost
+money.
+
+## A8. Chat cap drops from 100 to 50
+
+`MAX_MESSAGES_PER_CHAT` becomes 50, mirrored in `client/src/lib/limits.ts` and
+the root `CLAUDE.md`.
+
+Two consequences worth stating. Chats already holding more than 50 messages
+become full immediately and can only be continued as a new chat. And with a fold
+every 10 messages, a summary is folded at most four times in a chat's life, which
+sharply limits the detail decay the original spec accepted as a cost.
+
+## A9. Editing is out of scope here
+
+The original "Edits invalidate a summary" section assumes the client's edit
+modifies stored history. It does not: the client appends the edited text as a new
+message and the server has no edit endpoint, so there is nothing to invalidate.
+That section is superseded. Server-side editing, and the invalidation it needs,
+get their own spec.
+
+Until then `throughMessageCount` is clamped to `messages.length` on read, so the
+field cannot outrun the array once truncation becomes possible.
+
+## A10. Summary length is bounded by the prompt
+
+Each fold can lengthen the summary. The prompt sets an explicit ceiling and the
+stored text is truncated to it, so `systemInstruction` cannot grow until it costs
+more than the messages it replaced.
