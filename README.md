@@ -8,6 +8,9 @@ chats are saved per account, and you can start without signing up.
 - Streaming replies, markdown and syntax-highlighted code with a copy button
 - Guest accounts — sign in with Google later and your chats come with you
 - Chat history in a sidebar; rename, delete, edit and resend any message
+- Projects group related chats — click one to see the chats filed inside
+- Long chats keep going: older messages fold into a rolling summary rather than
+  being dropped, so what gets sent to Gemini stays flat as a chat grows
 - Mobile-first, sidebar collapses to a drawer
 
 | Layer    | Tech                                                      |
@@ -62,8 +65,22 @@ Tests sit next to the code they cover. Coverage is enforced at 80%.
 Events, not JSON — the server owns the history, so you never send it. Create a
 chat with `POST /chats` first.
 
-Everything else: `/auth/{signup,login,anonymous,google,logout,me}` and
-`/chats/:id` for GET, PATCH, DELETE.
+Everything else: `/auth/{signup,login,anonymous,google,logout,me}`, plus
+`/chats/:id` and `/projects/:id` for GET, PATCH, DELETE. Deleting a project
+deletes its chats with it.
+
+## Limits
+
+| | |
+| --- | --- |
+| Chat | 20k tokens stored, then start a new one |
+| Chats per project | 5 |
+| New projects | 5 per day |
+
+Once 4k tokens are unsummarized, the oldest complete exchanges fold into a
+summary capped at 400 tokens. Limits are enforced server-side and rejected with
+a `code` (`CHAT_FULL`, `PROJECT_FULL`, `PROJECT_LIMIT_REACHED`), not just a
+message.
 
 ## Deploying
 
