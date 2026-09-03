@@ -6,7 +6,7 @@ import ChatSidebar from '../../components/sidebar/ChatSidebar'
 import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
 import { useProjectStore } from '../../hooks/useProjectStore'
-import { MAX_MESSAGES_PER_CHAT } from '../../lib/limits'
+import { MAX_CHAT_TOKENS } from '../../lib/limits'
 
 export default function ChatPage() {
     const turns = useChatStore((state) => state.turns)
@@ -55,7 +55,7 @@ export default function ChatPage() {
     }, [turns.length])
 
     const activeChat = chats.find((chat) => chat.id === chatId)
-    const isChatFull = (activeChat?.messageCount ?? 0) >= MAX_MESSAGES_PER_CHAT
+    const isChatFull = (activeChat?.tokenCount ?? 0) >= MAX_CHAT_TOKENS
     const errorNotice = error ? <p className="px-4 py-2 text-sm text-red-400">{error}</p> : null
 
     // The server cascade already deleted this project's chats, so the sidebar

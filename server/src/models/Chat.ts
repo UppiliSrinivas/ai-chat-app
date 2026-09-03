@@ -12,6 +12,9 @@ const messageSchema = new Schema(
   {
     role: { type: String, enum: ["user", "assistant"], required: true },
     content: { type: String, required: true },
+    // Exact for assistant turns, which the API prices for us; estimated for
+    // user turns, which nothing can price before they are sent.
+    tokens: { type: Number, default: 0, min: 0 },
   },
   { timestamps: { createdAt: true, updatedAt: false }, _id: false },
 );
@@ -42,6 +45,9 @@ const chatSchema = new Schema(
     // Absent until the first summarize runs, so chats written before this
     // existed read as "never summarized" with no migration.
     summary: { type: summarySchema, default: undefined },
+    // Everything ever stored, which is what the chat cap measures. Compaction
+    // stops the whole transcript ever being sent, so no API response reports it.
+    tokenCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

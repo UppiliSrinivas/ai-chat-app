@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatSidebar, { type ChatSidebarProps } from './ChatSidebar'
+import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
 
 const chats = [
-  { id: 'a', title: 'First chat', projectId: null, messageCount: 0, updatedAt: '' },
-  { id: 'b', title: 'Second chat', projectId: null, messageCount: 0, updatedAt: '' },
+  { id: 'a', title: 'First chat', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '' },
+  { id: 'b', title: 'Second chat', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '' },
 ]
 
 const setup = (props: Partial<ChatSidebarProps> = {}) => {
@@ -155,13 +156,13 @@ describe('ChatSidebar', () => {
   })
 
   const project = { id: 'p1', name: 'Research', chatCount: 3, updatedAt: '' }
-  const filedChat = { id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, updatedAt: '' }
+  const filedChat = { id: 'c', title: 'Filed chat', projectId: 'p1', messageCount: 0, tokenCount: 0, updatedAt: '' }
 
   it('lists projects with their chat counts', () => {
     setup({ isOpen: true, projects: [project] })
 
     expect(screen.getByText('Research')).toBeInTheDocument()
-    expect(screen.getByText('3/10')).toBeInTheDocument()
+    expect(screen.getByText(`3/${MAX_CHATS_PER_PROJECT}`)).toBeInTheDocument()
   })
 
   // Creating a project used to make an unnamed "New project" on one click,

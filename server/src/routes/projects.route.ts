@@ -2,6 +2,11 @@ import { Router } from "express";
 import { Types } from "mongoose";
 import { Chat, isValidObjectId } from "../models/Chat.js";
 import { Project } from "../models/Project.js";
+import {
+  MAX_PROJECTS_PER_DAY,
+  isDailyProjectLimitReached,
+  startOfUtcDay,
+} from "../lib/limits/limits.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 
@@ -43,6 +48,21 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const name = readName(req.body?.name) ?? "New project";
+
+  // Abuse protection rather than a size cap, so the allowance frees up tomorrow
+  // and deleting a project does not buy back a slot today.
+  const createdToday = await Project.countDocuments({
+    userId: req.userId,
+    createdAt: { $gte: startOfUtcDay(new Date()) },
+  });
+
+  if (isDailyProjectLimitReached(createdToday)) {
+    res.status(409).json({
+      message: `You can create ${MAX_PROJECTS_PER_DAY} projects a day. Try again tomorrow.`,
+      code: "PROJECT_LIMIT_REACHED",
+    });
+    return;
+  }
 
   const project = await Project.create({ userId: req.userId, name });
   res.status(201).json({ id: project.id, name: project.name, chatCount: 0, updatedAt: project.updatedAt });

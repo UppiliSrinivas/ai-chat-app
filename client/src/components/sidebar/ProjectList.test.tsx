@@ -2,15 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ProjectList, { type ProjectListProps } from './ProjectList'
+import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
 
 const research = { id: 'p1', name: 'Research', chatCount: 2, updatedAt: '' }
 const marketing = { id: 'p2', name: 'Marketing', chatCount: 1, updatedAt: '' }
 
 const chats = [
-  { id: 'c1', title: 'Vector DBs', projectId: 'p1', messageCount: 0, updatedAt: '' },
-  { id: 'c2', title: 'Embedding costs', projectId: 'p1', messageCount: 0, updatedAt: '' },
-  { id: 'c3', title: 'Launch copy', projectId: 'p2', messageCount: 0, updatedAt: '' },
-  { id: 'c4', title: 'Loose chat', projectId: null, messageCount: 0, updatedAt: '' },
+  { id: 'c1', title: 'Vector DBs', projectId: 'p1', messageCount: 0, tokenCount: 0, updatedAt: '' },
+  { id: 'c2', title: 'Embedding costs', projectId: 'p1', messageCount: 0, tokenCount: 0, updatedAt: '' },
+  { id: 'c3', title: 'Launch copy', projectId: 'p2', messageCount: 0, tokenCount: 0, updatedAt: '' },
+  { id: 'c4', title: 'Loose chat', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '' },
 ]
 
 const setup = (props: Partial<ProjectListProps> = {}) => {
@@ -43,7 +44,7 @@ describe('ProjectList', () => {
     setup()
 
     expect(projectToggle('Research')).toBeInTheDocument()
-    expect(screen.getByText('2/10')).toBeInTheDocument()
+    expect(screen.getByText(`2/${MAX_CHATS_PER_PROJECT}`)).toBeInTheDocument()
   })
 
   it('starts collapsed', () => {
@@ -156,7 +157,7 @@ describe('ProjectList', () => {
   // is starting a new project.
   it('offers a new project instead of a new chat when full', async () => {
     const { onNewProject, onNewChatInProject, user } = setup({
-      projects: [{ ...research, chatCount: 10 }],
+      projects: [{ ...research, chatCount: MAX_CHATS_PER_PROJECT }],
     })
 
     await user.click(projectToggle('Research'))

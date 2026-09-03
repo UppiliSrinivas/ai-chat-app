@@ -20,6 +20,7 @@ router.get("/", async (req, res) => {
     title: string;
     projectId: unknown;
     messageCount: number;
+    tokenCount: number;
     updatedAt: Date;
   }>([
     { $match: { userId: new Types.ObjectId(req.userId) } },
@@ -31,6 +32,7 @@ router.get("/", async (req, res) => {
         projectId: 1,
         updatedAt: 1,
         messageCount: { $size: { $ifNull: ["$messages", []] } },
+        tokenCount: { $ifNull: ["$tokenCount", 0] },
       },
     },
     { $sort: { updatedAt: -1 } },
@@ -41,9 +43,10 @@ router.get("/", async (req, res) => {
       id: String(chat._id),
       title: chat.title,
       projectId: chat.projectId ? String(chat.projectId) : null,
-      // The client swaps the composer for a "new chat" button at the cap, and
-      // sending the count here saves it fetching every chat to find out.
       messageCount: chat.messageCount,
+      // The cap is measured in tokens, which the client cannot count itself,
+      // so the running total travels with the chat.
+      tokenCount: chat.tokenCount,
       updatedAt: chat.updatedAt,
     })),
   );
@@ -86,6 +89,7 @@ router.post("/", async (req, res) => {
     title: chat.title,
     projectId,
     messageCount: 0,
+    tokenCount: 0,
     updatedAt: chat.updatedAt,
     messages: [],
   });
@@ -112,6 +116,7 @@ router.get("/:id", async (req, res) => {
     title: chat.title,
     projectId: chat.projectId ? String(chat.projectId) : null,
     messageCount: chat.messages.length,
+    tokenCount: chat.tokenCount ?? 0,
     updatedAt: chat.updatedAt,
     messages: chat.messages.map((message) => ({ role: message.role, content: message.content })),
   });

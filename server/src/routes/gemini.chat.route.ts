@@ -3,8 +3,9 @@ import { env } from "../config/env.js";
 import { gemini, isGeminiConfigured } from "../config/gemini.js";
 import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request/chat-request.js";
 import { toGeminiContents } from "../lib/history/history.js";
-import { MAX_MESSAGES_PER_CHAT, isChatFull } from "../lib/limits/limits.js";
+import { MAX_CHAT_TOKENS, isChatFull } from "../lib/limits/limits.js";
 import { streamSSE } from "../lib/sse/sse.js";
+import { estimateTokens } from "../lib/tokens/tokens.js";
 import {
   messagesAfterSummary,
   runSummary,
@@ -29,10 +30,11 @@ const MAX_TITLE_LENGTH = 60;
  * so this only supplies the model call and the two writes.
  */
 const summaryDeps = (chatId: string, userId: string | undefined): SummaryDeps => ({
-  generate: async (prompt) => {
+  generate: async ({ system, user }) => {
     const response = await gemini.models.generateContent({
       model: env.geminiModel,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      config: { systemInstruction: system },
     });
     return response.text ?? "";
   },
@@ -87,9 +89,9 @@ router.post("/", async (req, res) => {
 
   // Checked before flushHeaders — once the SSE stream opens, a real HTTP
   // status can no longer be returned.
-  if (isChatFull(chat.messages.length)) {
+  if (isChatFull(chat.tokenCount ?? 0)) {
     res.status(409).json({
-      message: `This chat has reached its limit of ${MAX_MESSAGES_PER_CHAT} messages. Start a new chat to continue.`,
+      message: `This chat has reached its limit of ${MAX_CHAT_TOKENS} tokens. Start a new chat to continue.`,
       code: "CHAT_FULL",
     });
     return;
@@ -98,6 +100,7 @@ router.post("/", async (req, res) => {
   const storedMessages: SummaryMessage[] = chat.messages.map((entry) => ({
     role: entry.role,
     content: entry.content,
+    tokens: entry.tokens ?? undefined,
   }));
 
   const storedSummary: StoredSummary | undefined = chat.summary
@@ -122,7 +125,9 @@ router.post("/", async (req, res) => {
   // Persisted before streaming starts so the user's message survives even
   // if the model call fails outright, rather than living only in a response
   // that never arrives.
-  chat.messages.push({ role: "user", content: message });
+  const userTokens = estimateTokens(message);
+  chat.messages.push({ role: "user", content: message, tokens: userTokens });
+  chat.tokenCount = (chat.tokenCount ?? 0) + userTokens;
   if (chat.title === "New chat" && chat.messages.length === 1) {
     chat.title = message.slice(0, MAX_TITLE_LENGTH);
   }
@@ -133,6 +138,7 @@ router.post("/", async (req, res) => {
 
   let fullText = "";
   let promptTokens: number | undefined;
+  let replyTokens: number | undefined;
 
   await streamSSE(res, async function* (abortSignal) {
     const stream = await gemini.models.generateContentStream({
@@ -150,6 +156,7 @@ router.post("/", async (req, res) => {
       // Totals ride on the chunks; the last one carries the complete figure,
       // and an aborted stream may never deliver it.
       promptTokens = chunk.usageMetadata?.promptTokenCount ?? promptTokens;
+      replyTokens = chunk.usageMetadata?.candidatesTokenCount ?? replyTokens;
       const text = chunk.text ?? "";
       fullText += text;
       yield text;
@@ -161,9 +168,14 @@ router.post("/", async (req, res) => {
   // the transcript. The user's message above is already saved either way.
   if (!fullText) return;
 
+  const assistantTokens = replyTokens ?? estimateTokens(fullText);
+
   await Chat.updateOne(
     { _id: chatId, userId: req.userId },
-    { $push: { messages: { role: "assistant", content: fullText } } },
+    {
+      $push: { messages: { role: "assistant", content: fullText, tokens: assistantTokens } },
+      $inc: { tokenCount: assistantTokens },
+    },
   );
 
   // The loaded document is one behind, since the turn above was appended with
@@ -172,13 +184,13 @@ router.post("/", async (req, res) => {
   // boundary that decides whether a block is due.
   const transcript: SummaryMessage[] = [
     ...storedMessages,
-    { role: "user", content: message },
-    { role: "assistant", content: fullText },
+    { role: "user", content: message, tokens: userTokens },
+    { role: "assistant", content: fullText, tokens: assistantTokens },
   ];
 
   console.log(
-    `chat ${chatId}: ${promptTokens ?? "?"} prompt tokens, ${transcript.length} messages, ` +
-      `${summary?.throughMessageCount ?? 0} summarized`,
+    `chat ${chatId}: sent ${promptTokens ?? "?"} prompt tokens, stored ${chat.tokenCount + assistantTokens}, ` +
+      `${summary?.throughMessageCount ?? 0}/${transcript.length} messages summarized`,
   );
 
   await runSummary(transcript, summary, summaryDeps(chatId, req.userId));

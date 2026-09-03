@@ -68,7 +68,7 @@ const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { useChatStore } = await import('../../hooks/useChatStore')
 const { useProjectStore } = await import('../../hooks/useProjectStore')
 const { default: ChatPage } = await import('./index')
-const { MAX_MESSAGES_PER_CHAT } = await import('../../lib/limits')
+const { MAX_CHAT_TOKENS } = await import('../../lib/limits')
 
 const initialAuth = useAuthStore.getState()
 const initialChat = useChatStore.getState()
@@ -194,11 +194,11 @@ describe('ChatPage', () => {
 
   // At the cap the chat is read-only: the only way forward is a new chat, so
   // the composer is replaced rather than merely disabled.
-  it('replaces the composer with a new-chat button at the message cap', () => {
+  it('replaces the composer with a new-chat button at the token cap', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 12, tokenCount: MAX_CHAT_TOKENS, updatedAt: '' }],
     })
 
     render(<ChatPage />)
@@ -211,7 +211,7 @@ describe('ChatPage', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Fine', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT - 1, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Fine', projectId: null, messageCount: 12, tokenCount: MAX_CHAT_TOKENS - 1, updatedAt: '' }],
     })
 
     render(<ChatPage />)
@@ -291,7 +291,7 @@ describe('ChatPage', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 12, tokenCount: MAX_CHAT_TOKENS, updatedAt: '' }],
       startNewChat,
     })
     const user = userEvent.setup()
