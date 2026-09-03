@@ -6,7 +6,7 @@
  */
 
 /** User and assistant messages combined, not turns. */
-export const MAX_MESSAGES_PER_CHAT = 100;
+export const MAX_MESSAGES_PER_CHAT = 50;
 
 export const MAX_CHATS_PER_PROJECT = 10;
 

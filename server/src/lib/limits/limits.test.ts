@@ -11,8 +11,8 @@ describe("isChatFull", () => {
     expect(isChatFull(MAX_MESSAGES_PER_CHAT - 1)).toBe(false);
   });
 
-  // The cap is inclusive: at exactly 100 stored messages the chat is done,
-  // because the next send would write the 101st.
+  // The cap is inclusive: at exactly 50 stored messages the chat is done,
+  // because the next send would write the 51st.
   it("is full at exactly the cap", () => {
     expect(isChatFull(MAX_MESSAGES_PER_CHAT)).toBe(true);
   });
@@ -42,7 +42,7 @@ describe("isProjectFull", () => {
 
 describe("limit values", () => {
   it("matches the values the client and docs assume", () => {
-    expect(MAX_MESSAGES_PER_CHAT).toBe(100);
+    expect(MAX_MESSAGES_PER_CHAT).toBe(50);
     expect(MAX_CHATS_PER_PROJECT).toBe(10);
   });
 });
