@@ -89,3 +89,46 @@ describe("isValidObjectId", () => {
     expect(isValidObjectId(value)).toBe(false);
   });
 });
+
+describe("Chat summary", () => {
+  // Absent rather than zeroed, so chats written before summarization existed
+  // read as "never summarized" without a migration.
+  it("leaves a new chat unsummarized", () => {
+    const chat = new Chat({ userId });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.summary?.text ?? "").toBe("");
+    expect(chat.summary?.throughMessageCount ?? 0).toBe(0);
+  });
+
+  it("stores a summary and how far it reaches", () => {
+    const chat = new Chat({
+      userId,
+      summary: { text: "They discussed vector databases.", throughMessageCount: 10 },
+    });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.summary?.text).toBe("They discussed vector databases.");
+    expect(chat.summary?.throughMessageCount).toBe(10);
+  });
+
+  // The count drives an array slice, so a negative would slice from the end
+  // and silently feed the model the wrong messages.
+  it("refuses a negative reach", () => {
+    const error = new Chat({
+      userId,
+      summary: { text: "x", throughMessageCount: -1 },
+    }).validateSync();
+
+    expect(error?.errors["summary.throughMessageCount"]).toBeDefined();
+  });
+
+  // Counts consecutive failures so a chat that cannot be summarized stops
+  // being retried on every single message.
+  it("tracks failed attempts", () => {
+    const chat = new Chat({ userId, summary: { text: "", throughMessageCount: 0, failedAttempts: 2 } });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.summary?.failedAttempts).toBe(2);
+  });
+});
