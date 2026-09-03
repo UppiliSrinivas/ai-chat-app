@@ -68,6 +68,7 @@ const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { useChatStore } = await import('../../hooks/useChatStore')
 const { useProjectStore } = await import('../../hooks/useProjectStore')
 const { default: ChatPage } = await import('./index')
+const { MAX_MESSAGES_PER_CHAT } = await import('../../lib/limits')
 
 const initialAuth = useAuthStore.getState()
 const initialChat = useChatStore.getState()
@@ -197,7 +198,7 @@ describe('ChatPage', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 100, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT, updatedAt: '' }],
     })
 
     render(<ChatPage />)
@@ -210,7 +211,7 @@ describe('ChatPage', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Fine', projectId: null, messageCount: 99, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Fine', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT - 1, updatedAt: '' }],
     })
 
     render(<ChatPage />)
@@ -290,7 +291,7 @@ describe('ChatPage', () => {
     useChatStore.setState({
       chatId: 'c1',
       turns: [turn('t1', 'hi', 'hello')],
-      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: 100, updatedAt: '' }],
+      chats: [{ id: 'c1', title: 'Full', projectId: null, messageCount: MAX_MESSAGES_PER_CHAT, updatedAt: '' }],
       startNewChat,
     })
     const user = userEvent.setup()
