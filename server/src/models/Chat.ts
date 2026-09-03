@@ -16,6 +16,21 @@ const messageSchema = new Schema(
   { timestamps: { createdAt: true, updatedAt: false }, _id: false },
 );
 
+/**
+ * A rolling summary of the messages already folded into it. `throughMessageCount`
+ * is an index into `messages`, not a timestamp, so it cannot drift out of step
+ * with the array it describes. `failedAttempts` stops a chat that cannot be
+ * summarized from retrying on every single message.
+ */
+const summarySchema = new Schema(
+  {
+    text: { type: String, default: "" },
+    throughMessageCount: { type: Number, default: 0, min: 0 },
+    failedAttempts: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
+);
+
 const chatSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -24,6 +39,9 @@ const chatSchema = new Schema(
     projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null, index: true },
     title: { type: String, default: "New chat" },
     messages: { type: [messageSchema], default: [] },
+    // Absent until the first summarize runs, so chats written before this
+    // existed read as "never summarized" with no migration.
+    summary: { type: summarySchema, default: undefined },
   },
   { timestamps: true },
 );
