@@ -5,6 +5,7 @@ export type ChatSummary = {
   title: string
   projectId: string | null
   messageCount: number
+  tokenCount: number
   updatedAt: string
 }
 

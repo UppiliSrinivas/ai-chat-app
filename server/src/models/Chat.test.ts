@@ -132,3 +132,46 @@ describe("Chat summary", () => {
     expect(chat.summary?.failedAttempts).toBe(2);
   });
 });
+
+describe("Chat token accounting", () => {
+  // The chat cap counts everything ever stored, and compaction stops us ever
+  // sending it all in one call, so no API response can report this total.
+  it("starts a new chat at zero tokens", () => {
+    const chat = new Chat({ userId });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.tokenCount).toBe(0);
+  });
+
+  it("carries a running total for the chat", () => {
+    const chat = new Chat({ userId, tokenCount: 4200 });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.tokenCount).toBe(4200);
+  });
+
+  it("prices each message so the active window can be summed", () => {
+    const chat = new Chat({
+      userId,
+      messages: [{ role: "user", content: "hello", tokens: 2 }],
+    });
+
+    expect(chat.validateSync()).toBeUndefined();
+    expect(chat.messages[0]?.tokens).toBe(2);
+  });
+
+  // An unpriced message reads as zero rather than undefined, so a sum over the
+  // window can never come back NaN and silently disable the trigger.
+  it("defaults an unpriced message to zero rather than nothing", () => {
+    const chat = new Chat({ userId, messages: [{ role: "user", content: "hello" }] });
+
+    expect(chat.messages[0]?.tokens).toBe(0);
+  });
+
+  it.each([
+    ["tokenCount", { userId, tokenCount: -1 }],
+    ["message tokens", { userId, messages: [{ role: "user", content: "x", tokens: -5 }] }],
+  ])("refuses a negative %s", (_label, doc) => {
+    expect(new Chat(doc).validateSync()).toBeDefined();
+  });
+});

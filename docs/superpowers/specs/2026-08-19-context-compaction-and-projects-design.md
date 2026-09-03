@@ -274,3 +274,71 @@ field cannot outrun the array once truncation becomes possible.
 Each fold can lengthen the summary. The prompt sets an explicit ceiling and the
 stored text is truncated to it, so `systemInstruction` cannot grow until it costs
 more than the messages it replaced.
+
+---
+
+# Amendments — 2026-09-01, second pass: size measured in tokens
+
+The message-count design above shipped and was then replaced. Ten short messages
+and ten long ones cost wildly different amounts, and every threshold here exists
+to control cost, so all of them now count tokens. A1–A7, A9 and A10 stand; the
+changes below supersede the rest.
+
+## B1. Folding triggers on active tokens, not message count
+
+`SUMMARIZE_EVERY = 10` is replaced by `MAX_ACTIVE_TOKENS = 4000`. A fold is due
+once the unsummarized tail reaches that, so a single long exchange can trigger
+one and a run of short ones will not. A2 still holds: the block cuts at the last
+assistant message, and A6's ceiling on one call's input still applies.
+
+## B2. The chat cap counts tokens ever stored, not tokens sent
+
+`MAX_MESSAGES_PER_CHAT = 50` is replaced by `MAX_CHAT_TOKENS = 20000`,
+superseding A8.
+
+It has to count stored tokens. Compaction deliberately holds what is *sent* near
+`MAX_ACTIVE_TOKENS + MAX_SUMMARY_TOKENS` — about 4,400 — so a cap on the sent
+total would never be reached and a chat would never end.
+
+That total is therefore not something any API response can report, because the
+whole transcript is never sent in one call once folding begins. `Chat.tokenCount`
+carries it as a running total instead.
+
+## B3. Prices come from the API where they exist
+
+Assistant turns are priced by `candidatesTokenCount`, which is exact and free.
+User turns are estimated from length in `lib/tokens/`, because no call can price
+them before they are sent and paying for `countTokens` on every message would
+cost a round trip to answer a question an estimate answers well enough.
+
+Both are stored per message, so the active window is a sum rather than a second
+source of truth. An unpriced message reads as zero from the schema but is
+estimated when summed, so an older document cannot silently disable the trigger.
+
+## B4. The summary ceiling is 400 tokens
+
+Down from 2000 characters. The ceiling exists so the rolling summary cannot creep
+toward the threshold that triggers it; at 400 against a 4000 trigger it stays an
+order of magnitude clear.
+
+## B5. Project limits
+
+`MAX_CHATS_PER_PROJECT` drops from 10 to 5. A new `MAX_PROJECTS_PER_DAY = 5`
+limits how many projects a user may create per UTC day — abuse protection rather
+than a size cap, so it frees up tomorrow and deleting a project does not buy back
+a slot today. It rejects with 409 and `PROJECT_LIMIT_REACHED`, distinct from the
+`PROJECT_FULL` a full project returns.
+
+UTC, not local time, so the boundary does not move under a user who travels or a
+server that changes region.
+
+## B6. The summarization prompt
+
+The rules go in `systemInstruction` and the material in the user turn, rather
+than one concatenated string. The prompt asks for one merged summary in plain
+third-person prose, preserving facts, decisions, preferences and open questions
+while dropping small talk, with no preamble or headers.
+
+A5's guard is kept and applies to both halves: the transcript is material to
+describe, and an instruction appearing inside it is recorded as something a
+participant said rather than acted on.
