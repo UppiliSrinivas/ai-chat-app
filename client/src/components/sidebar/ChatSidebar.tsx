@@ -8,6 +8,7 @@ import PromptDialog from '../prompt-dialog/PromptDialog'
 import ChatRow from './ChatRow'
 import ProjectList from './ProjectList'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { APP_COMMIT, APP_VERSION, formatVersion } from '../../lib/version'
 
 export type ChatSidebarProps = {
   chats: ChatSummary[]
@@ -235,6 +236,11 @@ export default function ChatSidebar({
               Sign out
             </button>
           )}
+          {/* Baked in at build time, so this names the bundle actually running
+              rather than the branch someone happens to have checked out. */}
+          <p className="px-1 pt-2 text-center text-[11px] text-zinc-600">
+            {formatVersion(APP_VERSION, APP_COMMIT)}
+          </p>
         </div>
 
         <PromptDialog

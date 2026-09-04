@@ -149,6 +149,14 @@ describe('ChatSidebar', () => {
     expect(screen.getByText('person@example.com')).toBeInTheDocument()
   })
 
+  // The build identity has to be visible somewhere a user can read it back to
+  // you, otherwise "which version are you on?" has no answer.
+  it('shows the build it was compiled from', () => {
+    setup()
+
+    expect(screen.getByText(/^v\d+\.\d+\.\d+ · \S+$/)).toBeInTheDocument()
+  })
+
   it('labels an anonymous account as Guest', () => {
     setup({ user: { id: '1', email: null, isAnonymous: true } })
 
