@@ -10,6 +10,14 @@ const setup = (props: Partial<React.ComponentProps<typeof Composer>> = {}) => {
 }
 
 describe('Composer', () => {
+  // Sits with the composer rather than the page so it cannot drift out of
+  // place, and names the build so a screenshot is enough to identify it.
+  it('warns that answers can be wrong, naming the build', () => {
+    setup()
+
+    expect(screen.getByText(/^AI-Chat-App can make mistakes - V \d+\.\d+\.\d+$/)).toBeInTheDocument()
+  })
+
   it('sends the trimmed draft and clears the box', async () => {
     const { onSend, user } = setup()
 
