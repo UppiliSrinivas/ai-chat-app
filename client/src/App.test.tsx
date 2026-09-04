@@ -36,6 +36,16 @@ describe('App', () => {
     expect(screen.queryByText('sign in page')).toBeNull()
   })
 
+  // A blank screen is indistinguishable from a broken one; the probe usually
+  // resolves fast, but on a slow connection it is all the user sees.
+  it('shows a loader while the session is still unknown', () => {
+    useAuthStore.setState({ status: 'checking' })
+
+    render(<App />)
+
+    expect(screen.getByRole('status')).toHaveAccessibleName('Checking your session')
+  })
+
   it('shows the sign-in page when signed out', () => {
     useAuthStore.setState({ status: 'signedOut' })
 

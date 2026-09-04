@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import ChatPage from './pages/chat'
+import Loader from './components/loader/Loader'
 import SignInPage from './pages/signin'
 import { useAuthStore } from './hooks/useAuthStore'
 import { useChatStore } from './hooks/useChatStore'
@@ -24,9 +25,16 @@ export default function App() {
     }
   }, [status])
 
-  // Render nothing until the cookie probe resolves, so a signed-in user
-  // never sees the sign-in page flash before the redirect.
-  if (status === 'checking') return <div className="min-h-svh bg-black" />
+  // Neither page renders until the cookie probe resolves, so a signed-in user
+  // never sees the sign-in screen flash before the redirect. A loader rather
+  // than an empty screen, which on a slow connection reads as broken.
+  if (status === 'checking') {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-black">
+        <Loader label="Checking your session" />
+      </div>
+    )
+  }
 
   // A guest mid-upgrade still holds a valid session, so this is deliberately
   // not a signed-out check — the cookie must survive for the server to link
