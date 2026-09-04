@@ -63,7 +63,7 @@ export default function Composer({
     <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
       {/* Lives with the composer so it cannot drift away from the input it
           qualifies, and carries the build so a screenshot identifies it. */}
-      <p className="mb-2 text-center text-xs text-zinc-500">
+      <p className="pb-2 text-center text-xs text-zinc-500">
         AI-Chat-App can make mistakes - V {APP_VERSION}
       </p>
       <div className="mx-auto flex w-full max-w-3xl items-end gap-1.5 rounded-3xl border border-zinc-700 bg-zinc-800 p-2 focus-within:border-zinc-500 sm:gap-2 sm:p-2.5">
