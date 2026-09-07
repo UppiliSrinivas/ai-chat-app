@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { isGoogleConfigured } from "../config/env.js";
 import { User, type UserDoc } from "../models/User.js";
 import { validateCredentials } from "../lib/auth-request/auth-request.js";
@@ -27,6 +27,14 @@ const toUserResponse = (user: UserDoc & { id: string }) => ({
   email: user.email ?? null,
   isAnonymous: Boolean(user.isAnonymous),
 });
+
+/** The session normally rides in an httpOnly cookie so the browser's own JS can
+ *  never read it. A native client has no cookie jar, so it asks for the token in
+ *  the body — and only a request that identifies itself as one gets it back. */
+const sessionResponse = (req: Request, user: UserDoc & { id: string }, token: string) => {
+  const body = toUserResponse(user);
+  return req.get("X-Client") === "mobile" ? { ...body, token } : body;
+};
 
 router.post("/signup", async (req, res) => {
   const parsed = validateCredentials(req.body);
@@ -70,7 +78,7 @@ router.post("/signup", async (req, res) => {
 
   const token = signSessionToken({ userId: user.id });
   res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
-  res.status(201).json(toUserResponse(user));
+  res.status(201).json(sessionResponse(req, user, token));
 });
 
 router.post("/login", async (req, res) => {
@@ -101,7 +109,7 @@ router.post("/login", async (req, res) => {
 
   const token = signSessionToken({ userId: user.id });
   res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
-  res.json(toUserResponse(user));
+  res.json(sessionResponse(req, user, token));
 });
 
 // No credentials, no body — just mints a guest identity so someone can start
@@ -110,12 +118,12 @@ router.post("/login", async (req, res) => {
 // later creates a real account, so nothing is lost. Logging into a
 // *different*, pre-existing account still leaves the guest's chats behind —
 // merging across two different accounts isn't handled.
-router.post("/anonymous", async (_req, res) => {
+router.post("/anonymous", async (req, res) => {
   const user = await User.create({ isAnonymous: true });
 
   const token = signSessionToken({ userId: user.id });
   res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
-  res.status(201).json(toUserResponse(user));
+  res.status(201).json(sessionResponse(req, user, token));
 });
 
 // Takes the ID token @react-oauth/google returns in its `credential` field.
@@ -176,7 +184,7 @@ router.post("/google", async (req, res) => {
 
   const token = signSessionToken({ userId: user.id });
   res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
-  res.json(toUserResponse(user));
+  res.json(sessionResponse(req, user, token));
 });
 
 router.post("/logout", (_req, res) => {

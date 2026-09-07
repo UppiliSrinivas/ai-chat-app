@@ -19,8 +19,8 @@ const fakeRes = () => {
   return res;
 };
 
-const run = (cookies?: Record<string, string>) => {
-  const req = { cookies } as Request;
+const run = (cookies?: Record<string, string>, authorization?: string) => {
+  const req = { cookies, headers: { authorization } } as unknown as Request;
   const res = fakeRes();
   const next = vi.fn() as unknown as NextFunction;
 
@@ -73,5 +73,46 @@ describe("requireAuth", () => {
 
     expect(res.statusCode).toBe(401);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  // The mobile client has no cookie jar worth trusting across restarts, so it
+  // carries the identical JWT in an Authorization header instead.
+  it("accepts the same token as a bearer header when no cookie is present", () => {
+    const token = signSessionToken({ userId: "507f1f77bcf86cd799439011" });
+
+    const { req, res, next } = run(undefined, `Bearer ${token}`);
+
+    expect(req.userId).toBe("507f1f77bcf86cd799439011");
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBe(0);
+  });
+
+  it("rejects a bearer header carrying an invalid token", () => {
+    const { res, next } = run(undefined, "Bearer not.a.jwt");
+
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  // A browser sending both must not be able to override its own httpOnly
+  // cookie with a header it can write from JS.
+  it("prefers the cookie when a request carries both", () => {
+    const cookieToken = signSessionToken({ userId: "507f1f77bcf86cd799439011" });
+    const headerToken = signSessionToken({ userId: "507f1f77bcf86cd799439012" });
+
+    const { req } = run({ [SESSION_COOKIE_NAME]: cookieToken }, `Bearer ${headerToken}`);
+
+    expect(req.userId).toBe("507f1f77bcf86cd799439011");
+  });
+
+  // An unverifiable cookie falls through to the header rather than short
+  // circuiting, so a stale browser cookie cannot lock out a valid bearer token.
+  it("falls back to the bearer token when the cookie fails verification", () => {
+    const token = signSessionToken({ userId: "507f1f77bcf86cd799439011" });
+
+    const { req, next } = run({ [SESSION_COOKIE_NAME]: "not.a.jwt" }, `Bearer ${token}`);
+
+    expect(req.userId).toBe("507f1f77bcf86cd799439011");
+    expect(next).toHaveBeenCalledOnce();
   });
 });

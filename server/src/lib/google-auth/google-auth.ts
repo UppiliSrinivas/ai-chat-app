@@ -1,5 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
-import { env } from "../../config/env.js";
+import { env, googleAudiences } from "../../config/env.js";
 
 /**
  * Verification for the ID token @react-oauth/google hands the client. Split
@@ -54,8 +54,9 @@ export const verifyGoogleCredential = async (credential: string): Promise<Google
 
   try {
     // `audience` is what ties the token to this app. Omit it and a token minted
-    // for any other Google client verifies here just as happily.
-    const ticket = await client.verifyIdToken({ idToken: credential, audience: env.googleClientId });
+    // for any other Google client verifies here just as happily. It is a list
+    // because the web, iOS and Android clients each stamp their own `aud`.
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: googleAudiences });
     payload = ticket.getPayload();
   } catch {
     return invalid;

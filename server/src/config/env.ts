@@ -52,11 +52,28 @@ export const env = {
    *  `aud` claim, so a wrong value rejects every sign-in. Must match the
    *  client's VITE_GOOGLE_CLIENT_ID exactly. */
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+
+  /** Google stamps an ID token's `aud` with whichever client asked for it, and a
+   *  native app cannot reuse the web client — Google only accepts https redirect
+   *  URIs there. So the mobile app registers its own platform clients and their
+   *  IDs are trusted here too. Each is optional; an unset one just means that
+   *  platform cannot sign in. */
+  googleClientIdIos: process.env.GOOGLE_CLIENT_ID_IOS ?? "",
+  googleClientIdAndroid: process.env.GOOGLE_CLIENT_ID_ANDROID ?? "",
 } as const;
 
 export const isMongoConfigured = env.mongoUri.length > 0;
 export const isAuthConfigured = env.jwtSecret.length > 0;
 
+/** Every Google client this project owns. A token is accepted if its `aud`
+ *  matches any one of them, which is what lets one server serve the browser and
+ *  both mobile platforms. */
+export const googleAudiences: string[] = [
+  env.googleClientId,
+  env.googleClientIdIos,
+  env.googleClientIdAndroid,
+].filter((clientId) => clientId.length > 0);
+
 /** Optional, unlike Mongo and JWT: email/password and guest sign-in still work
  *  without it, so the route answers 503 rather than boot failing. */
-export const isGoogleConfigured = env.googleClientId.length > 0;
+export const isGoogleConfigured = googleAudiences.length > 0;

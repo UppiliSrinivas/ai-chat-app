@@ -10,7 +10,7 @@ vi.mock("google-auth-library", () => ({
   },
 }));
 
-const { env } = await import("../../config/env.js");
+const { env, googleAudiences } = await import("../../config/env.js");
 const { MAX_CREDENTIAL_LENGTH, readGoogleCredential, verifyGoogleCredential } = await import("./google-auth.js");
 
 const validPayload = {
@@ -78,16 +78,18 @@ describe("verifyGoogleCredential", () => {
   });
 
   // The audience check is the whole reason this can't be a plain jwt.decode:
-  // without it, a token minted for any other Google client would pass.
-  it("checks the token against this app's client ID", async () => {
+  // without it, a token minted for any other Google client would pass. It is a
+  // list because the browser, iOS and Android clients each stamp their own aud.
+  it("checks the token against every client ID this project owns", async () => {
     verifyIdToken.mockResolvedValue(ticketFor(validPayload));
 
     await verifyGoogleCredential("token");
 
     expect(verifyIdToken).toHaveBeenCalledWith({
       idToken: "token",
-      audience: env.googleClientId,
+      audience: googleAudiences,
     });
+    expect(googleAudiences).toContain(env.googleClientId);
   });
 
   it("rejects a token whose signature, issuer, or audience fails", async () => {

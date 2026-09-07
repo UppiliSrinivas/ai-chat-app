@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SESSION_COOKIE_NAME,
   hashPassword,
+  readBearerToken,
   readSessionUserId,
   sessionCookieOptions,
   signSessionToken,
@@ -79,5 +80,34 @@ describe("sessionCookieOptions", () => {
 
   it("exposes a stable cookie name shared by the routes that set and clear it", () => {
     expect(SESSION_COOKIE_NAME).toBe("session");
+  });
+});
+
+describe("readBearerToken", () => {
+  it("pulls the token out of a well-formed header", () => {
+    expect(readBearerToken("Bearer abc.def.ghi")).toBe("abc.def.ghi");
+  });
+
+  // Express lowercases header names but never their values, and plenty of
+  // clients send "bearer" — rejecting those would look like an expired session.
+  it("accepts any casing of the scheme", () => {
+    expect(readBearerToken("bearer abc.def.ghi")).toBe("abc.def.ghi");
+    expect(readBearerToken("BEARER abc.def.ghi")).toBe("abc.def.ghi");
+  });
+
+  it("rejects a header that is missing, empty or not a string", () => {
+    expect(readBearerToken(undefined)).toBeNull();
+    expect(readBearerToken("")).toBeNull();
+    expect(readBearerToken(123)).toBeNull();
+  });
+
+  it("rejects a scheme it does not recognise", () => {
+    expect(readBearerToken("Basic abc.def.ghi")).toBeNull();
+    expect(readBearerToken("abc.def.ghi")).toBeNull();
+  });
+
+  it("rejects a bearer scheme with no token after it", () => {
+    expect(readBearerToken("Bearer")).toBeNull();
+    expect(readBearerToken("Bearer ")).toBeNull();
   });
 });

@@ -41,6 +41,16 @@ export const readSessionUserId = (token: unknown): string | null => {
   return verifySessionToken(token)?.userId ?? null;
 };
 
+/** Pulls the JWT out of an `Authorization: Bearer <token>` header. The mobile
+ *  app has no cookie jar worth trusting across restarts, so it carries the same
+ *  token here instead. */
+export const readBearerToken = (header: unknown): string | null => {
+  if (typeof header !== "string") return null;
+  const [scheme, token] = header.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
+  return token;
+};
+
 /** Name and options for the session cookie, shared between the routes that
  *  set it (login/signup) and the ones that clear it (logout), so they can
  *  never drift out of sync. */
