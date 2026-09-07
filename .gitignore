@@ -11,6 +11,9 @@ dist/
 dist-ssr/
 build/
 
+# Test coverage output
+coverage/
+
 # Logs
 logs/
 *.log
@@ -20,6 +23,7 @@ pnpm-debug.log*
 
 # Local tooling config
 .claude/settings.local.json
+.superpowers/
 
 # Editor / OS
 .vscode/*
@@ -28,3 +32,4 @@ pnpm-debug.log*
 .DS_Store
 *.suo
 *.sw?
+*~

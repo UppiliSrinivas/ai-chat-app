@@ -1,0 +1,12 @@
+{
+  "name": "ai-chat-app",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Git hook tooling only — client/ and server/ remain independent npm packages, see CLAUDE.md",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
