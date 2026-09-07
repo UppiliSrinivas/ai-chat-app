@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowDown, Menu } from 'lucide-react'
 import Composer from '../../components/composser'
 import Message from '../../components/message'
 import ChatSidebar from '../../components/sidebar/ChatSidebar'
 import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
 import { useProjectStore } from '../../hooks/useProjectStore'
+import { useScrollAnchor } from '../../hooks/useScrollAnchor'
 import { MAX_CHAT_TOKENS } from '../../lib/limits'
 
 export default function ChatPage() {
@@ -36,8 +37,17 @@ export default function ChatPage() {
     const removeProject = useProjectStore((state) => state.removeProject)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-    const bottomRef = useRef<HTMLDivElement>(null)
-    const previousTurnCountRef = useRef(0)
+
+    // Grows as a reply streams, not only when a turn is added. A message count
+    // alone never changes mid-stream, so the answer scrolls out of view.
+    const contentLength = turns.reduce(
+        (total, turn) =>
+            total +
+            (turn.edits[turn.activeEditIndex]?.length ?? 0) +
+            (turn.responses[turn.activeEditIndex]?.length ?? 0),
+        0,
+    )
+    const { viewportRef, isPinned, scrollToBottom } = useScrollAnchor(contentLength)
 
     useEffect(() => {
         loadChats()
@@ -46,13 +56,6 @@ export default function ChatPage() {
     useEffect(() => {
         loadProjects()
     }, [loadProjects])
-
-    useEffect(() => {
-        if (turns.length > previousTurnCountRef.current) {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-        }
-        previousTurnCountRef.current = turns.length
-    }, [turns.length])
 
     const activeChat = chats.find((chat) => chat.id === chatId)
     const isChatFull = (activeChat?.tokenCount ?? 0) >= MAX_CHAT_TOKENS
@@ -121,7 +124,12 @@ export default function ChatPage() {
                     </div>
                 ) : (
                     <div className="flex h-full flex-col">
-                        <div className="no-scrollbar flex-1 overflow-y-auto px-3 pt-8 pb-40 sm:px-4 sm:pt-12">
+                        <div
+                            ref={viewportRef}
+                            role="region"
+                            aria-label="Conversation"
+                            className="no-scrollbar flex-1 overflow-y-auto px-3 pt-8 pb-40 sm:px-4 sm:pt-12"
+                        >
                             <div className="mx-auto w-full max-w-3xl">
                                 {turns.map((turn) => {
                                     const content = turn.edits[turn.activeEditIndex]
@@ -146,11 +154,23 @@ export default function ChatPage() {
                                 })}
                                 {errorNotice}
                             </div>
-                            <div ref={bottomRef} />
                         </div>
 
                         <div className="absolute inset-x-0 bottom-0">
                             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-black via-black/2 to-transparent" />
+                            {!isPinned && (
+                                <div className="relative flex justify-center pb-3">
+                                    <button
+                                        type="button"
+                                        onClick={scrollToBottom}
+                                        aria-label="Jump to latest"
+                                        className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                                    >
+                                        <ArrowDown size={18} />
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="relative bottom-5">
                                 {isChatFull ? (
                                     <div className="flex justify-center px-4 py-3">

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // The children are covered by their own suites; stubbing them keeps this
@@ -278,6 +278,37 @@ describe('ChatPage', () => {
 
   // An error raised before the first reply arrives has no transcript to sit
   // beside, and used to render nowhere at all.
+  // The case the anchor exists for: a reader who scrolls up mid-stream stops
+  // being dragged back down, and gets one click to return.
+  it('offers a way back to the newest message after scrolling away', async () => {
+    const user = userEvent.setup()
+    useChatStore.setState({ turns: [turn('t1', 'what is 2+2', '4')] })
+
+    render(<ChatPage />)
+
+    // jsdom does no layout, so the viewport is given dimensions by hand.
+    const conversation = screen.getByRole('region', { name: 'Conversation' })
+    let scrollTop = 0
+    Object.defineProperty(conversation, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(conversation, 'clientHeight', { value: 400, configurable: true })
+    Object.defineProperty(conversation, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value
+      },
+    })
+
+    expect(screen.queryByRole('button', { name: 'Jump to latest' })).not.toBeInTheDocument()
+
+    fireEvent.scroll(conversation)
+
+    await user.click(screen.getByRole('button', { name: 'Jump to latest' }))
+
+    expect(conversation.scrollTop).toBe(1000)
+    expect(screen.queryByRole('button', { name: 'Jump to latest' })).not.toBeInTheDocument()
+  })
+
   it('surfaces a store error on an empty chat too', () => {
     useChatStore.setState({ turns: [], error: 'Could not create the chat' })
 
