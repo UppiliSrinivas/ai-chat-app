@@ -1,0 +1,7 @@
+# Every path in the repository, so any pull request automatically requests a
+# review from the maintainer.
+#
+# This only blocks a merge once a ruleset on the target branch enables
+# "Require review from Code Owners" — on its own it just adds a reviewer.
+
+* @UppiliSrinivas
