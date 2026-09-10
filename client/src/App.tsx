@@ -30,7 +30,7 @@ export default function App() {
   // than an empty screen, which on a slow connection reads as broken.
   if (status === 'checking') {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-black">
+      <div className="flex min-h-dvh items-center justify-center bg-black">
         <Loader label="Checking your session" />
       </div>
     )

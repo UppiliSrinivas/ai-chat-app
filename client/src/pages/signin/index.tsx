@@ -29,7 +29,7 @@ export default function SignInPage() {
   }, [])
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-black px-5 py-10">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-black px-5 py-10">
       <div ref={columnRef} className="flex w-full max-w-xs flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-2 text-center">
           <h1 className="text-2xl font-medium tracking-tight text-zinc-100">
