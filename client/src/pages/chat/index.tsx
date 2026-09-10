@@ -69,7 +69,7 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="flex h-svh bg-black w-full">
+        <div className="flex h-dvh bg-black w-full">
             <ChatSidebar
                 chats={chats}
                 activeChatId={chatId}
@@ -95,7 +95,7 @@ export default function ChatPage() {
                     type="button"
                     onClick={() => setIsSidebarOpen(true)}
                     aria-label="Open chat history"
-                    className="absolute top-3 left-3 z-30 flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
+                    className="absolute top-3 left-3 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-black/80 text-zinc-400 backdrop-blur-sm hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
                 >
                     <Menu size={18} />
                 </button>
@@ -128,7 +128,7 @@ export default function ChatPage() {
                             ref={viewportRef}
                             role="region"
                             aria-label="Conversation"
-                            className="no-scrollbar flex-1 overflow-y-auto px-3 pt-8 pb-40 sm:px-4 sm:pt-12"
+                            className="no-scrollbar flex-1 overflow-y-auto px-3 pt-14 pb-40 sm:px-4 md:pt-12"
                         >
                             <div className="mx-auto w-full max-w-3xl">
                                 {turns.map((turn) => {

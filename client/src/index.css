@@ -129,11 +129,14 @@
 body {
   margin: 0;
   background: #000;
+  /* The thread is the only scroller. Without this, dragging past its end
+     rubber-bands the page behind it and drags the address bar with it. */
+  overscroll-behavior: none;
 }
 
 #root {
   width: 100%;
-  min-height: 100svh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -168,10 +171,11 @@ p {
   margin: 0;
 }
 
+/* Deliberately not inline-flex: a flex box cannot break across lines, so a
+   long snippet inside a message overflows sideways instead of wrapping. */
 code,
 .counter {
   font-family: var(--mono);
-  display: inline-flex;
   border-radius: 4px;
   color: var(--text-h);
 }
