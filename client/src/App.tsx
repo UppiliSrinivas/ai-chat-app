@@ -36,10 +36,11 @@ export default function App() {
     )
   }
 
-  // A guest mid-upgrade still holds a valid session, so this is deliberately
-  // not a signed-out check — the cookie must survive for the server to link
+  // Sign-in is only ever reached deliberately now: someone with no session
+  // gets the chat, and their guest account is created on the first message. A
+  // guest mid-upgrade keeps that cookie, which is what lets the server link
   // the new identity to their existing chats.
-  if (status === 'signedOut' || isUpgrading) return <SignInPage />
+  if (isUpgrading) return <SignInPage />
 
   return (
     <BrowserRouter>

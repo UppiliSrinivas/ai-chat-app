@@ -15,12 +15,17 @@ type AuthState = {
   isUpgrading: boolean
   error: string | null
   checkSession: () => Promise<void>
-  signInAsGuest: () => Promise<void>
+  /** Mints the guest account a first message needs. Safe to call on every send. */
+  ensureSession: () => Promise<void>
   signInWithGoogle: (credential: string) => Promise<void>
   startUpgrade: () => void
   cancelUpgrade: () => void
   signOut: () => Promise<void>
 }
+
+// Two rapid sends can both find no user. Without a shared in-flight promise
+// the second mints a duplicate guest and the first one's chat is stranded.
+let pendingGuestSession: Promise<User> | null = null
 
 export const useAuthStore = create<AuthState>((set, get) => {
   const runSignIn = async (signIn: () => Promise<User>) => {
@@ -48,7 +53,17 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ user, status: user ? 'signedIn' : 'signedOut' })
     },
 
-    signInAsGuest: () => runSignIn(loginAsGuest),
+    ensureSession: async () => {
+      if (get().user) return
+
+      pendingGuestSession ??= loginAsGuest()
+      try {
+        const user = await pendingGuestSession
+        set({ user, status: 'signedIn' })
+      } finally {
+        pendingGuestSession = null
+      }
+    },
 
     signInWithGoogle: (credential) => runSignIn(() => loginWithGoogle(credential)),
 
