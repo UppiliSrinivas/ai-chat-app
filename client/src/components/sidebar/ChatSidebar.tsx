@@ -117,6 +117,10 @@ export default function ChatSidebar({
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const isHidden = !isDesktop && !isOpen
 
+  // Three states, not two: a visitor who has never sent a message has no
+  // account at all, so "Sign out" would be offering to end nothing.
+  const canSignOut = user !== null && !user.isAnonymous
+
   const handleSelect = (chatId: string) => {
     onSelect(chatId)
     onClose()
@@ -217,16 +221,7 @@ export default function ChatSidebar({
           <p className="truncate px-1 pb-2 text-xs text-zinc-500">{user?.email ?? 'Guest'}</p>
           {/* A guest's only identity is the session cookie, so signing out would
               strand their chats with no way back in. Offer the upgrade instead. */}
-          {user?.isAnonymous ? (
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
-            >
-              <LogIn size={16} />
-              Sign in to save chats
-            </button>
-          ) : (
+          {canSignOut ? (
             <button
               type="button"
               onClick={onSignOut}
@@ -234,6 +229,15 @@ export default function ChatSidebar({
             >
               <LogOut size={16} />
               Sign out
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="flex w-full items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+            >
+              <LogIn size={16} />
+              Sign in to save chats
             </button>
           )}
           {/* Baked in at build time, so this names the bundle actually running

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { streamChat } from '../api/streamChat'
 import { createChat, deleteChat as deleteChatRequest, getChat, listChats, type ChatMessage, type ChatSummary } from '../api/chats'
+import { useAuthStore } from './useAuthStore'
 import { useProjectStore } from './useProjectStore'
 
 export type Turn = {
@@ -58,6 +59,9 @@ export const useChatStore = create<ChatState>((set, get) => {
   const ensureChatId = async (): Promise<string> => {
     const existing = get().chatId
     if (existing) return existing
+
+    // A guest has no account until this moment; the chat below needs one.
+    await useAuthStore.getState().ensureSession()
 
     const chat = await createChat(get().pendingProjectId ?? undefined)
     set({ chatId: chat.id, pendingProjectId: null })

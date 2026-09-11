@@ -18,6 +18,8 @@ vi.mock('@react-oauth/google', () => ({
 const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { default: SignInPage } = await import('./index')
 
+const guestUser = { id: 'u1', email: null, isAnonymous: true }
+
 const initialState = useAuthStore.getState()
 
 beforeEach(() => {
@@ -26,29 +28,19 @@ beforeEach(() => {
 })
 
 describe('SignInPage', () => {
-  it('welcomes a signed-out visitor', () => {
+  // Someone who has never sent a message has no account and so no chats to
+  // carry over — they are simply signing in.
+  it('welcomes a visitor who has nothing to carry over', () => {
     render(<SignInPage />)
 
     expect(screen.getByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue as guest' })).toBeInTheDocument()
+    expect(screen.getByText('Sign in to start chatting')).toBeInTheDocument()
   })
 
-  it('signs in as a guest', async () => {
-    const signInAsGuest = vi.fn()
-    useAuthStore.setState({ signInAsGuest })
-    const user = userEvent.setup()
+  it('never offers to continue as a guest', () => {
     render(<SignInPage />)
 
-    await user.click(screen.getByRole('button', { name: 'Continue as guest' }))
-
-    expect(signInAsGuest).toHaveBeenCalledOnce()
-  })
-
-  it('disables the guest button while a sign-in is in flight', () => {
-    useAuthStore.setState({ isSubmitting: true })
-    render(<SignInPage />)
-
-    expect(screen.getByRole('button', { name: 'Signing in…' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Continue as guest' })).toBeNull()
   })
 
   it('passes a Google credential straight to the store', () => {
@@ -82,7 +74,7 @@ describe('SignInPage', () => {
 
   describe('when a guest is upgrading', () => {
     beforeEach(() => {
-      useAuthStore.setState({ isUpgrading: true, status: 'signedIn' })
+      useAuthStore.setState({ isUpgrading: true, status: 'signedIn', user: guestUser })
     })
 
     it('explains that existing chats carry over', () => {
@@ -108,12 +100,6 @@ describe('SignInPage', () => {
 
       expect(useAuthStore.getState().isUpgrading).toBe(false)
       expect(useAuthStore.getState().status).toBe('signedIn')
-    })
-
-    it('hides the guest-chats footnote', () => {
-      render(<SignInPage />)
-
-      expect(screen.queryByText(/Guest chats stay on this browser/)).toBeNull()
     })
   })
 })

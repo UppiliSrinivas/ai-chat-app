@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_EDITS_PER_MESSAGE, useChatStore } from './useChatStore'
+import { useAuthStore } from './useAuthStore'
 import { createChat, deleteChat, getChat, listChats } from '../api/chats'
 import { listProjects } from '../api/projects'
 import { streamChat } from '../api/streamChat'
@@ -40,9 +41,41 @@ beforeEach(() => {
   vi.mocked(createChat).mockResolvedValue({ id: 'chat-1', title: 'New chat', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '', messages: [] })
   vi.mocked(streamChat).mockResolvedValue(undefined)
   vi.mocked(listProjects).mockResolvedValue([])
+  // Every first send now mints a guest account; stubbing it keeps these tests
+  // about the chat, and off the network.
+  useAuthStore.setState({ ensureSession: vi.fn() })
 })
 
 describe('sendMessage', () => {
+  // The chat belongs to a user, so the account has to exist before it does.
+  it('creates the guest account before the chat', async () => {
+    const order: string[] = []
+    useAuthStore.setState({
+      ensureSession: vi.fn(async () => {
+        order.push('session')
+      }),
+    })
+    vi.mocked(createChat).mockImplementation(async () => {
+      order.push('chat')
+      return { id: 'chat-1', title: 'New chat', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '', messages: [] }
+    })
+
+    await useChatStore.getState().sendMessage('hi')
+
+    expect(order).toEqual(['session', 'chat'])
+  })
+
+  it('reports why a send failed when the guest account cannot be created', async () => {
+    useAuthStore.setState({
+      ensureSession: vi.fn().mockRejectedValue(new Error('Server unavailable')),
+    })
+
+    await useChatStore.getState().sendMessage('hi')
+
+    expect(useChatStore.getState().error).toBe('Server unavailable')
+    expect(useChatStore.getState().turns).toHaveLength(1)
+  })
+
   it('appends a turn and streams the reply into it', async () => {
     vi.mocked(streamChat).mockImplementation(async ({ onDelta }) => {
       onDelta('Hi ')

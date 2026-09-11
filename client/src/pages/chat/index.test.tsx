@@ -74,6 +74,9 @@ const initialAuth = useAuthStore.getState()
 const initialChat = useChatStore.getState()
 const initialProject = useProjectStore.getState()
 
+const guestUser = { id: 'u1', email: null, isAnonymous: true }
+const memberUser = { id: 'u2', email: 'person@example.com', isAnonymous: false }
+
 const turn = (id: string, prompt: string, reply: string) => ({
   id,
   edits: [prompt],
@@ -88,13 +91,28 @@ beforeEach(() => {
 })
 
 describe('ChatPage', () => {
-  it('loads the chat list on mount', () => {
+  it('loads the chat list once there is an account', () => {
     const loadChats = vi.fn()
+    useAuthStore.setState({ user: guestUser })
     useChatStore.setState({ loadChats })
 
     render(<ChatPage />)
 
     expect(loadChats).toHaveBeenCalledOnce()
+  })
+
+  // A visitor who has never sent a message has no session, so both calls would
+  // 401 and leave a project error on screen that they cannot act on.
+  it('loads nothing while there is no account', () => {
+    const loadChats = vi.fn()
+    const loadProjects = vi.fn()
+    useChatStore.setState({ loadChats })
+    useProjectStore.setState({ loadProjects })
+
+    render(<ChatPage />)
+
+    expect(loadChats).not.toHaveBeenCalled()
+    expect(loadProjects).not.toHaveBeenCalled()
   })
 
   it('invites the user to start when there are no turns', () => {
@@ -183,13 +201,68 @@ describe('ChatPage', () => {
     expect(screen.getByText('sidebar open')).toBeInTheDocument()
   })
 
-  it('loads projects on mount', () => {
+  it('loads projects once there is an account', () => {
     const loadProjects = vi.fn()
+    useAuthStore.setState({ user: guestUser })
     useProjectStore.setState({ loadProjects })
 
     render(<ChatPage />)
 
     expect(loadProjects).toHaveBeenCalledOnce()
+  })
+
+  describe('the sign-in nudge', () => {
+    const twoTurns = [turn('t1', 'hi', 'hello'), turn('t2', 'more', 'sure')]
+
+    it('asks a guest to sign in once the chat is worth saving', () => {
+      useAuthStore.setState({ user: guestUser })
+      useChatStore.setState({ turns: twoTurns })
+
+      render(<ChatPage />)
+
+      expect(screen.getByText('Sign in to save this chat.')).toBeInTheDocument()
+    })
+
+    it('leaves a signed-in user alone', () => {
+      useAuthStore.setState({ user: memberUser })
+      useChatStore.setState({ turns: twoTurns })
+
+      render(<ChatPage />)
+
+      expect(screen.queryByText('Sign in to save this chat.')).toBeNull()
+    })
+
+    it('holds off until there is something to save', () => {
+      useAuthStore.setState({ user: guestUser })
+      useChatStore.setState({ turns: [turn('t1', 'hi', 'hello')] })
+
+      render(<ChatPage />)
+
+      expect(screen.queryByText('Sign in to save this chat.')).toBeNull()
+    })
+
+    it('takes a guest who accepts to the sign-in page', async () => {
+      const startUpgrade = vi.fn()
+      useAuthStore.setState({ user: guestUser, startUpgrade })
+      useChatStore.setState({ turns: twoTurns })
+      const user = userEvent.setup()
+      render(<ChatPage />)
+
+      await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(startUpgrade).toHaveBeenCalledOnce()
+    })
+
+    it('goes away when dismissed', async () => {
+      useAuthStore.setState({ user: guestUser })
+      useChatStore.setState({ turns: twoTurns })
+      const user = userEvent.setup()
+      render(<ChatPage />)
+
+      await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+
+      expect(screen.queryByText('Sign in to save this chat.')).toBeNull()
+    })
   })
 
   // At the cap the chat is read-only: the only way forward is a new chat, so

@@ -46,12 +46,15 @@ describe('App', () => {
     expect(screen.getByRole('status')).toHaveAccessibleName('Checking your session')
   })
 
-  it('shows the sign-in page when signed out', () => {
+  // Being a guest is the default now, not a choice: the account itself is
+  // created on the first message, so nothing gates the chat.
+  it('shows the chat page to a visitor with no session', () => {
     useAuthStore.setState({ status: 'signedOut' })
 
     render(<App />)
 
-    expect(screen.getByText('sign in page')).toBeInTheDocument()
+    expect(screen.getByText('chat page')).toBeInTheDocument()
+    expect(screen.queryByText('sign in page')).toBeNull()
   })
 
   it('shows the chat page when signed in', () => {

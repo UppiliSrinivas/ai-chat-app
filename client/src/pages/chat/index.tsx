@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { ArrowDown, Menu } from 'lucide-react'
 import Composer from '../../components/composser'
 import Message from '../../components/message'
+import SaveChatNudge from '../../components/save-chat-nudge/SaveChatNudge'
 import ChatSidebar from '../../components/sidebar/ChatSidebar'
 import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
 import { useProjectStore } from '../../hooks/useProjectStore'
 import { useScrollAnchor } from '../../hooks/useScrollAnchor'
 import { MAX_CHAT_TOKENS } from '../../lib/limits'
+import { shouldShowSaveNudge } from '../../lib/nudge'
 
 export default function ChatPage() {
     const turns = useChatStore((state) => state.turns)
@@ -37,6 +39,8 @@ export default function ChatPage() {
     const removeProject = useProjectStore((state) => state.removeProject)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+    // Turn count when the guest last closed the sign-in banner, or null if never.
+    const [dismissedAtTurn, setDismissedAtTurn] = useState<number | null>(null)
 
     // Grows as a reply streams, not only when a turn is added. A message count
     // alone never changes mid-stream, so the answer scrolls out of view.
@@ -49,16 +53,27 @@ export default function ChatPage() {
     )
     const { viewportRef, isPinned, scrollToBottom } = useScrollAnchor(contentLength)
 
+    // Nothing to load until there is an account. A visitor who has never sent
+    // a message would get a 401 and a project error they cannot act on.
     useEffect(() => {
+        if (!user) return
         loadChats()
-    }, [loadChats])
+    }, [user, loadChats])
 
     useEffect(() => {
+        if (!user) return
         loadProjects()
-    }, [loadProjects])
+    }, [user, loadProjects])
 
     const activeChat = chats.find((chat) => chat.id === chatId)
     const isChatFull = (activeChat?.tokenCount ?? 0) >= MAX_CHAT_TOKENS
+    const isGuest = user === null || user.isAnonymous
+    const isNudgeVisible = shouldShowSaveNudge({
+        turnCount: turns.length,
+        dismissedAtTurn,
+        isGuest,
+        isStreaming,
+    })
     const errorNotice = error ? <p className="px-4 py-2 text-sm text-red-400">{error}</p> : null
 
     // The server cascade already deleted this project's chats, so the sidebar
@@ -168,6 +183,15 @@ export default function ChatPage() {
                                     >
                                         <ArrowDown size={18} />
                                     </button>
+                                </div>
+                            )}
+
+                            {isNudgeVisible && (
+                                <div className="relative pb-2">
+                                    <SaveChatNudge
+                                        onSignIn={startUpgrade}
+                                        onDismiss={() => setDismissedAtTurn(turns.length)}
+                                    />
                                 </div>
                             )}
 
