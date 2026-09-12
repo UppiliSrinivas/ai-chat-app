@@ -151,11 +151,13 @@ export const getWeather = async (
     // A miss omits `results` entirely rather than returning an empty array, so
     // this cannot be a length check.
     const match = geocoded.results?.[0];
+    console.log(`[getWeather] "${query}" matched ${match ? describePlace(match) : "nothing"}.`);
     if (!match) return failure("PLACE_NOT_FOUND", `No place called "${query}" was found.`);
 
     const forecast = await fetchJson<ForecastResponse>(forecastUrl(match.latitude, match.longitude), signal);
     const current = forecast.current;
     if (!current) {
+        console.log(`[getWeather] "${query}" matched ${describePlace(match)} but the forecast had no current reading.`);
       return failure("PROVIDER_UNAVAILABLE", `The weather service returned no reading for ${describePlace(match)}.`);
     }
 
@@ -163,6 +165,10 @@ export const getWeather = async (
   } catch (error) {
     // The chat stream is already gone, so there is nobody to hand a result to.
     if (signal?.aborted) throw error;
+
+    // Logged, not returned: the model gets a sentence it can explain while the
+    // cause stays where an operator can read it.
+    console.error(`[getWeather] "${query}" failed:`, error);
 
     if (error instanceof Error && error.name === "TimeoutError") {
       return failure("TIMED_OUT", "The weather service took too long to answer.");
