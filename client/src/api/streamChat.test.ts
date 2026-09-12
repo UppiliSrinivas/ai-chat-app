@@ -104,3 +104,48 @@ describe('streamChat', () => {
     )
   })
 })
+
+describe('streamChat tool frames', () => {
+  const running = { id: 'call_1', name: 'getWeather', status: 'running', label: 'Checking the weather in Chennai' }
+  const done = { ...running, status: 'done' }
+
+  it('delivers a tool frame to onTool and not to onDelta', async () => {
+    mockFetchWithBody([`data: ${JSON.stringify({ tool: running })}\n\n`, 'data: [DONE]\n\n'])
+    const onDelta = vi.fn()
+    const onTool = vi.fn()
+
+    await streamChat({ chatId: 'c1', message: 'weather?', onDelta, onTool })
+
+    expect(onTool).toHaveBeenCalledWith(running)
+    expect(onDelta).not.toHaveBeenCalled()
+  })
+
+  it('delivers both reports of the same call, in order', async () => {
+    mockFetchWithBody([
+      `data: ${JSON.stringify({ tool: running })}\n\n`,
+      `data: ${JSON.stringify({ tool: done })}\n\n`,
+      'data: {"delta":"It is warm."}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const onDelta = vi.fn()
+    const onTool = vi.fn()
+
+    await streamChat({ chatId: 'c1', message: 'weather?', onDelta, onTool })
+
+    expect(onTool.mock.calls.map(([activity]) => activity.status)).toEqual(['running', 'done'])
+    expect(onDelta).toHaveBeenCalledWith('It is warm.')
+  })
+
+  // A caller that doesn't care about tools must still receive its deltas.
+  it('ignores tool frames when no onTool was given', async () => {
+    mockFetchWithBody([
+      `data: ${JSON.stringify({ tool: running })}\n\n`,
+      'data: {"delta":"It is warm."}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const onDelta = vi.fn()
+
+    await expect(streamChat({ chatId: 'c1', message: 'weather?', onDelta })).resolves.toBeUndefined()
+    expect(onDelta).toHaveBeenCalledWith('It is warm.')
+  })
+})

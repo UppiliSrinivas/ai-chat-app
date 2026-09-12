@@ -5,8 +5,8 @@ import AssistantMessage, { type AssistantMessageProps } from './AssistantMessage
 
 const setup = (props: Partial<AssistantMessageProps> = {}) => {
   const handlers = { onFeedback: vi.fn(), onShare: vi.fn() }
-  render(<AssistantMessage content="The answer" {...handlers} {...props} />)
-  return { ...handlers, user: userEvent.setup() }
+  const view = render(<AssistantMessage content="The answer" {...handlers} {...props} />)
+  return { ...handlers, ...view, user: userEvent.setup() }
 }
 
 afterEach(() => {
@@ -76,5 +76,48 @@ describe('AssistantMessage', () => {
     await user.click(screen.getByRole('button', { name: 'Share response' }))
 
     expect(onShare).toHaveBeenCalledExactlyOnceWith('The answer')
+  })
+})
+
+describe('AssistantMessage tool activity', () => {
+  const running = {
+    id: 'call_1',
+    name: 'getWeather',
+    status: 'running' as const,
+    label: 'Checking the weather in Chennai',
+  }
+
+  it('names the operation that is running', () => {
+    setup({ content: '', isStreaming: true, tools: [running] })
+
+    expect(screen.getByText('Checking the weather in Chennai')).toBeInTheDocument()
+  })
+
+  it('lists parallel calls separately', () => {
+    const second = { ...running, id: 'call_2', label: 'Checking the weather in Mumbai' }
+    setup({ content: '', isStreaming: true, tools: [running, second] })
+
+    expect(screen.getByText('Checking the weather in Chennai')).toBeInTheDocument()
+    expect(screen.getByText('Checking the weather in Mumbai')).toBeInTheDocument()
+  })
+
+  // The tool line already says work is happening, so the dots would repeat it.
+  it('replaces the typing dots rather than sitting beside them', () => {
+    const { container } = setup({ content: '', isStreaming: true, tools: [running] })
+
+    expect(container.querySelectorAll('.animate-bounce')).toHaveLength(0)
+  })
+
+  it('still shows the typing dots when no tool is running', () => {
+    const { container } = setup({ content: '', isStreaming: true })
+
+    expect(container.querySelectorAll('.animate-bounce')).toHaveLength(3)
+  })
+
+  it('keeps the finished tool line visible while the answer streams in', () => {
+    setup({ content: 'It is warm.', isStreaming: true, tools: [{ ...running, status: 'done' }] })
+
+    expect(screen.getByText('Checking the weather in Chennai')).toBeInTheDocument()
+    expect(screen.getByText('It is warm.')).toBeInTheDocument()
   })
 })

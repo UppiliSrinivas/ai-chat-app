@@ -1,13 +1,28 @@
 import { API_BASE_URL } from './client'
 
-type StreamChatParams = {
+export type ToolStatus = 'running' | 'done' | 'failed'
+
+/** Identified by `id`, not `name`: one reply can run the same tool twice, as
+ *  "compare Delhi and Mumbai" does. */
+export type ToolActivity = {
+  id: string
+  name: string
+  status: ToolStatus
+  label: string
+}
+
+type StreamHandlers = {
+  onDelta: (delta: string) => void
+  onTool?: (activity: ToolActivity) => void
+}
+
+type StreamChatParams = StreamHandlers & {
   chatId: string
   message: string
-  onDelta: (delta: string) => void
   signal?: AbortSignal
 }
 
-export async function streamChat({ chatId, message, onDelta, signal }: StreamChatParams): Promise<void> {
+export async function streamChat({ chatId, message, onDelta, onTool, signal }: StreamChatParams): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/gemini/chat`, {
     method: 'POST',
     credentials: 'include',
@@ -35,7 +50,7 @@ export async function streamChat({ chatId, message, onDelta, signal }: StreamCha
       while (separatorIndex !== -1) {
         const rawEvent = buffer.slice(0, separatorIndex)
         buffer = buffer.slice(separatorIndex + 2)
-        if (handleEvent(rawEvent, onDelta) === 'done') return
+        if (handleEvent(rawEvent, { onDelta, onTool }) === 'done') return
         separatorIndex = buffer.indexOf('\n\n')
       }
     }
@@ -44,7 +59,7 @@ export async function streamChat({ chatId, message, onDelta, signal }: StreamCha
   }
 }
 
-function handleEvent(rawEvent: string, onDelta: (delta: string) => void): 'done' | undefined {
+function handleEvent(rawEvent: string, handlers: StreamHandlers): 'done' | undefined {
   let eventType = 'message'
   const dataLines: string[] = []
 
@@ -67,7 +82,13 @@ function handleEvent(rawEvent: string, onDelta: (delta: string) => void): 'done'
 
   if (data === '[DONE]') return 'done'
 
-  const parsed = JSON.parse(data) as { delta?: string }
-  if (parsed.delta) onDelta(parsed.delta)
+  const parsed = JSON.parse(data) as { delta?: string; tool?: ToolActivity }
+
+  if (parsed.tool) {
+    handlers.onTool?.(parsed.tool)
+    return undefined
+  }
+
+  if (parsed.delta) handlers.onDelta(parsed.delta)
   return undefined
 }

@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Response } from "express";
-import { streamSSE, type DeltaProducer } from "./sse.js";
+import { streamSSE, type EventProducer, type StreamEvent } from "./sse.js";
 
 /** A minimal stand-in for Express's Response: just enough of the surface
  *  streamSSE touches (headers, write/end, and the "close" event). */
@@ -28,6 +28,8 @@ class FakeResponse extends EventEmitter {
 
 const asResponse = (res: FakeResponse) => res as unknown as Response;
 
+const text = (value: string): StreamEvent => ({ kind: "delta", text: value });
+
 describe("streamSSE", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -35,7 +37,7 @@ describe("streamSSE", () => {
 
   it("sets the SSE headers, including the anti-buffering header for proxies", async () => {
     const res = new FakeResponse();
-    const produce: DeltaProducer = async function* () {};
+    const produce: EventProducer = async function* () {};
 
     await streamSSE(asResponse(res), produce);
 
@@ -47,9 +49,9 @@ describe("streamSSE", () => {
 
   it("writes each delta as its own data frame, then [DONE], then ends the response", async () => {
     const res = new FakeResponse();
-    const produce: DeltaProducer = async function* () {
-      yield "hel";
-      yield "lo";
+    const produce: EventProducer = async function* () {
+      yield text("hel");
+      yield text("lo");
     };
 
     await streamSSE(asResponse(res), produce);
@@ -64,9 +66,9 @@ describe("streamSSE", () => {
 
   it("skips empty deltas", async () => {
     const res = new FakeResponse();
-    const produce: DeltaProducer = async function* () {
-      yield "";
-      yield "content";
+    const produce: EventProducer = async function* () {
+      yield text("");
+      yield text("content");
     };
 
     await streamSSE(asResponse(res), produce);
@@ -76,8 +78,8 @@ describe("streamSSE", () => {
 
   it("sends an error frame and ends the response when the producer throws", async () => {
     const res = new FakeResponse();
-    const produce: DeltaProducer = async function* () {
-      yield "partial";
+    const produce: EventProducer = async function* () {
+      yield text("partial");
       throw new Error("model exploded");
     };
 
@@ -94,8 +96,8 @@ describe("streamSSE", () => {
     const res = new FakeResponse();
     let observedAborted = false;
 
-    const produce: DeltaProducer = async function* (signal) {
-      yield "first";
+    const produce: EventProducer = async function* (signal) {
+      yield text("first");
       res.emit("close");
       await Promise.resolve();
       observedAborted = signal.aborted;
@@ -109,10 +111,10 @@ describe("streamSSE", () => {
   it("stops writing further deltas and never calls end() once the client has disconnected", async () => {
     const res = new FakeResponse();
 
-    const produce: DeltaProducer = async function* () {
-      yield "first";
+    const produce: EventProducer = async function* () {
+      yield text("first");
       res.emit("close");
-      yield "second";
+      yield text("second");
     };
 
     await streamSSE(asResponse(res), produce);
@@ -132,7 +134,7 @@ describe("streamSSE", () => {
       resolveProducer = resolve;
     });
 
-    const produce: DeltaProducer = async function* () {
+    const produce: EventProducer = async function* () {
       await producerGate;
     };
 
@@ -143,5 +145,44 @@ describe("streamSSE", () => {
 
     resolveProducer();
     await streamPromise;
+  });
+});
+
+describe("streamSSE tool frames", () => {
+  const activity = {
+    id: "call_1",
+    name: "getWeather",
+    status: "running" as const,
+    label: "Checking the weather in Chennai",
+  };
+
+  it("writes a tool frame alongside the deltas", async () => {
+    const res = new FakeResponse();
+    const produce: EventProducer = async function* () {
+      yield { kind: "tool", activity };
+      yield text("It is warm.");
+    };
+
+    await streamSSE(asResponse(res), produce);
+
+    expect(res.chunks).toEqual([
+      `data: ${JSON.stringify({ tool: activity })}\n\n`,
+      `data: ${JSON.stringify({ delta: "It is warm." })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+  });
+
+  // An empty delta is skipped, but a tool frame carries no text to be empty.
+  it("never skips a tool frame the way it skips an empty delta", async () => {
+    const res = new FakeResponse();
+    const produce: EventProducer = async function* () {
+      yield text("");
+      yield { kind: "tool", activity: { ...activity, status: "done", label: "" } };
+    };
+
+    await streamSSE(asResponse(res), produce);
+
+    expect(res.chunks).toHaveLength(2);
+    expect(res.chunks[0]).toContain('"tool"');
   });
 });
