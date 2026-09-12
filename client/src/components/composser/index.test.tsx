@@ -15,7 +15,7 @@ describe('Composer', () => {
   it('warns that answers can be wrong, naming the build', () => {
     setup()
 
-    expect(screen.getByText(/^AI-Chat-App can make mistakes - V \d+\.\d+\.\d+$/)).toBeInTheDocument()
+    expect(screen.getByText('AI-Chat-App can make mistakes')).toBeInTheDocument()
   })
 
   it('sends the trimmed draft and clears the box', async () => {
@@ -90,5 +90,20 @@ describe('Composer', () => {
     setup({ placeholder: 'Ask anything' })
 
     expect(screen.getByPlaceholderText('Ask anything')).toBeInTheDocument()
+  })
+})
+
+describe('Composer token count', () => {
+  it('appends a compact token count once the chat has one', () => {
+    render(<Composer onSend={vi.fn()} tokenCount={2400} />)
+
+    expect(screen.getByText('AI-Chat-App can make mistakes - 2.4K tokens')).toBeInTheDocument()
+  })
+
+  // "0 tokens" on a brand new chat reads as something being broken.
+  it('says nothing about tokens before the first message', () => {
+    render(<Composer onSend={vi.fn()} tokenCount={0} />)
+
+    expect(screen.getByText('AI-Chat-App can make mistakes')).toBeInTheDocument()
   })
 })

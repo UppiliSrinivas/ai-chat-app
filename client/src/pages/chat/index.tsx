@@ -138,7 +138,13 @@ export default function ChatPage() {
                                     </button>
                                 </div>
                             ) : (
-                                <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} autoFocus />
+                                <Composer
+                                    onSend={sendMessage}
+                                    isStreaming={isStreaming}
+                                    onStop={stopStreaming}
+                                    tokenCount={activeChat?.tokenCount}
+                                    autoFocus
+                                />
                             )}
                         </div>
                     </div>
@@ -220,7 +226,12 @@ export default function ChatPage() {
                                         </button>
                                     </div>
                                 ) : (
-                                    <Composer onSend={sendMessage} isStreaming={isStreaming} onStop={stopStreaming} />
+                                    <Composer
+                                        onSend={sendMessage}
+                                        isStreaming={isStreaming}
+                                        onStop={stopStreaming}
+                                        tokenCount={activeChat?.tokenCount}
+                                    />
                                 )}
                             </div>
                         </div>

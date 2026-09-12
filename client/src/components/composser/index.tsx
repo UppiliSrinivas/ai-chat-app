@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ArrowUp, Square } from 'lucide-react'
-import { APP_VERSION } from '../../lib/version'
+import { formatTokens } from '../../lib/formatTokens'
 
 type ComposerProps = {
   onSend: (message: string) => void | Promise<void>
@@ -10,6 +10,8 @@ type ComposerProps = {
   disabled?: boolean
   placeholder?: string
   autoFocus?: boolean
+  /** Tokens stored in this chat so far. Omitted on a chat with no messages. */
+  tokenCount?: number
 }
 
 const MAX_TEXTAREA_HEIGHT_PX = 200
@@ -26,9 +28,13 @@ export default function Composer({
   disabled = false,
   placeholder = 'Ask...',
   autoFocus = false,
+  tokenCount = 0,
 }: ComposerProps) {
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // A fresh chat has nothing to report, and "0 tokens" reads as broken.
+  const usageNotice = tokenCount > 0 ? ` - ${formatTokens(tokenCount)} tokens` : ''
 
   const trimmedDraft = draft.trim()
   const canSend = trimmedDraft.length > 0 && !disabled && !isStreaming
@@ -62,9 +68,9 @@ export default function Composer({
   return (
     <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
       {/* Lives with the composer so it cannot drift away from the input it
-          qualifies, and carries the build so a screenshot identifies it. */}
+          qualifies. The build number is in the sidebar footer instead. */}
       <p className="pb-2 text-center text-xs text-zinc-500">
-        AI-Chat-App can make mistakes - V {APP_VERSION}
+        AI-Chat-App can make mistakes{usageNotice}
       </p>
       <div className="mx-auto flex w-full max-w-3xl items-end gap-1.5 rounded-3xl border border-zinc-700 bg-zinc-800 p-2 focus-within:border-zinc-500 sm:gap-2 sm:p-2.5">
         <textarea
