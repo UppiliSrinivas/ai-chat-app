@@ -8,6 +8,7 @@ import type { Response } from "express";
  * A route supplies nothing but an async generator of text deltas.
  *
  *   data: {"delta": "..."}   incremental text
+ *   data: {"tool": {…}}      a tool starting, finishing, or failing
  *   data: [DONE]             normal end of stream
  *   event: error\ndata: {…}  failure
  */
@@ -17,9 +18,24 @@ import type { Response } from "express";
  *  no `data:` line yields no event. */
 const HEARTBEAT_MS = 15_000;
 
-export type DeltaProducer = (signal: AbortSignal) => AsyncIterable<string>;
+export type ToolStatus = "running" | "done" | "failed";
 
-export const streamSSE = async (res: Response, produce: DeltaProducer): Promise<void> => {
+/** `id` rather than `name` identifies a call: one round can run the same tool
+ *  twice, as "compare Delhi and Mumbai" does. */
+export type ToolActivity = {
+  id: string;
+  name: string;
+  status: ToolStatus;
+  label: string;
+};
+
+export type StreamEvent =
+  | { kind: "delta"; text: string }
+  | { kind: "tool"; activity: ToolActivity };
+
+export type EventProducer = (signal: AbortSignal) => AsyncIterable<StreamEvent>;
+
+export const streamSSE = async (res: Response, produce: EventProducer): Promise<void> => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -46,11 +62,16 @@ export const streamSSE = async (res: Response, produce: DeltaProducer): Promise<
   }, HEARTBEAT_MS);
 
   try {
-    for await (const delta of produce(controller.signal)) {
+    for await (const event of produce(controller.signal)) {
       if (clientGone) break;
-      if (!delta) continue;
 
-      res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+      if (event.kind === "tool") {
+        res.write(`data: ${JSON.stringify({ tool: event.activity })}\n\n`);
+        continue;
+      }
+
+      if (!event.text) continue;
+      res.write(`data: ${JSON.stringify({ delta: event.text })}\n\n`);
     }
 
     if (!clientGone) {

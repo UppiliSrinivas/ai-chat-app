@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { streamChat } from '../api/streamChat'
+import { streamChat, type ToolActivity } from '../api/streamChat'
 import { createChat, deleteChat as deleteChatRequest, getChat, listChats, type ChatMessage, type ChatSummary } from '../api/chats'
 import { useAuthStore } from './useAuthStore'
 import { useProjectStore } from './useProjectStore'
@@ -33,6 +33,9 @@ type ChatState = {
   turns: Turn[]
   isStreaming: boolean
   streamingTurnId: string | null
+  /** Tool calls in the reply being streamed now. Live only — nothing is
+   *  persisted, so a reload shows the answer without them. */
+  activeTools: ToolActivity[]
   error: string | null
   chatId: string | null
   chats: ChatSummary[]
@@ -75,7 +78,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   const runStream = async (turnId: string, message: string) => {
     const controller = new AbortController()
     activeAbortController = controller
-    set({ isStreaming: true, streamingTurnId: turnId, error: null })
+    set({ isStreaming: true, streamingTurnId: turnId, error: null, activeTools: [] })
 
     try {
       const chatId = await ensureChatId()
@@ -83,6 +86,18 @@ export const useChatStore = create<ChatState>((set, get) => {
         chatId,
         message,
         signal: controller.signal,
+        // A tool arrives as `running`, then again as `done` or `failed`, so the
+        // second report replaces the first rather than stacking on it.
+        onTool: (activity) => {
+          set((state) => {
+            const index = state.activeTools.findIndex((tool) => tool.id === activity.id)
+            if (index === -1) return { activeTools: [...state.activeTools, activity] }
+
+            const activeTools = [...state.activeTools]
+            activeTools[index] = activity
+            return { activeTools }
+          })
+        },
         onDelta: (delta) => {
           set((state) => ({
             turns: state.turns.map((turn) => {
@@ -100,7 +115,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     } finally {
       if (activeAbortController === controller) activeAbortController = null
-      set({ isStreaming: false, streamingTurnId: null })
+      set({ isStreaming: false, streamingTurnId: null, activeTools: [] })
       // Refreshes title (server derives it from the first message) and
       // moves this chat to the top of the sidebar's updatedAt ordering.
       get().loadChats()
@@ -111,6 +126,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     turns: [],
     isStreaming: false,
     streamingTurnId: null,
+    activeTools: [],
     error: null,
     chatId: null,
     chats: [],
@@ -228,7 +244,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     // messages still on screen.
     reset: () => {
       activeAbortController?.abort()
-      set({ turns: [], chatId: null, chats: [], error: null, isStreaming: false, streamingTurnId: null, pendingProjectId: null })
+      set({ turns: [], chatId: null, chats: [], error: null, isStreaming: false, streamingTurnId: null, activeTools: [], pendingProjectId: null })
     },
   }
 })

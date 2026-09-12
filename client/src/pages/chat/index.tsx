@@ -9,12 +9,17 @@ import { useChatStore } from '../../hooks/useChatStore'
 import { useProjectStore } from '../../hooks/useProjectStore'
 import { useScrollAnchor } from '../../hooks/useScrollAnchor'
 import { MAX_CHAT_TOKENS } from '../../lib/limits'
+import type { ToolActivity } from '../../api/streamChat'
+
+/** Stable identity, so a non-streaming turn doesn't re-render on every keystroke. */
+const NO_TOOLS: ToolActivity[] = []
 import { shouldShowSaveNudge } from '../../lib/nudge'
 
 export default function ChatPage() {
     const turns = useChatStore((state) => state.turns)
     const isStreaming = useChatStore((state) => state.isStreaming)
     const streamingTurnId = useChatStore((state) => state.streamingTurnId)
+    const activeTools = useChatStore((state) => state.activeTools)
     const error = useChatStore((state) => state.error)
     const chatId = useChatStore((state) => state.chatId)
     const chats = useChatStore((state) => state.chats)
@@ -150,6 +155,9 @@ export default function ChatPage() {
                                     const content = turn.edits[turn.activeEditIndex]
                                     const response = turn.responses[turn.activeEditIndex]
                                     const isTurnStreaming = turn.id === streamingTurnId
+                                    // Only the streaming turn has live tool activity; the store
+                                    // clears it when the reply finishes.
+                                    const turnTools = isTurnStreaming ? activeTools : NO_TOOLS
 
                                     return (
                                         <div key={turn.id}>
@@ -162,7 +170,12 @@ export default function ChatPage() {
                                                 onEdit={(newContent) => editMessage(turn.id, newContent)}
                                             />
                                             {(response || isTurnStreaming) && (
-                                                <Message role="assistant" content={response} isStreaming={isTurnStreaming} />
+                                                <Message
+                                                    role="assistant"
+                                                    content={response}
+                                                    isStreaming={isTurnStreaming}
+                                                    tools={turnTools}
+                                                />
                                             )}
                                         </div>
                                     )

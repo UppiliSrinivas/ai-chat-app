@@ -3,7 +3,7 @@ import { MAX_EDITS_PER_MESSAGE, useChatStore } from './useChatStore'
 import { useAuthStore } from './useAuthStore'
 import { createChat, deleteChat, getChat, listChats } from '../api/chats'
 import { listProjects } from '../api/projects'
-import { streamChat } from '../api/streamChat'
+import { streamChat, type ToolActivity } from '../api/streamChat'
 
 vi.mock('../api/chats', () => ({
   createChat: vi.fn(),
@@ -419,5 +419,52 @@ describe('reset', () => {
       streamingTurnId: null,
       pendingProjectId: null,
     })
+  })
+})
+
+describe('tool activity', () => {
+  const running: ToolActivity = {
+    id: 'call_1',
+    name: 'getWeather',
+    status: 'running',
+    label: 'Checking the weather in Chennai',
+  }
+
+  it('collects each tool the reply reports', async () => {
+    const seen: ToolActivity[] = []
+    vi.mocked(streamChat).mockImplementation(async ({ onTool }) => {
+      onTool?.(running)
+      onTool?.({ ...running, id: 'call_2', label: 'Checking the weather in Mumbai' })
+      seen.push(...useChatStore.getState().activeTools)
+    })
+
+    await useChatStore.getState().sendMessage('compare Delhi and Mumbai')
+
+    expect(seen.map((tool) => tool.id)).toEqual(['call_1', 'call_2'])
+  })
+
+  // The same call reports twice — running, then done — and must not stack up.
+  it('replaces a tool report rather than appending a second one', async () => {
+    let duringStream: ToolActivity[] = []
+    vi.mocked(streamChat).mockImplementation(async ({ onTool }) => {
+      onTool?.(running)
+      onTool?.({ ...running, status: 'done' })
+      duringStream = useChatStore.getState().activeTools
+    })
+
+    await useChatStore.getState().sendMessage('weather?')
+
+    expect(duringStream).toHaveLength(1)
+    expect(duringStream[0]?.status).toBe('done')
+  })
+
+  it('clears the tool list once the reply finishes', async () => {
+    vi.mocked(streamChat).mockImplementation(async ({ onTool }) => {
+      onTool?.(running)
+    })
+
+    await useChatStore.getState().sendMessage('weather?')
+
+    expect(useChatStore.getState().activeTools).toEqual([])
   })
 })

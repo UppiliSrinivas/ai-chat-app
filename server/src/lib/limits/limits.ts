@@ -36,3 +36,7 @@ export const isDailyProjectLimitReached = (createdToday: number): boolean =>
  */
 export const startOfUtcDay = (now: Date): Date =>
   new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+/** Tool rounds inside one reply. Each round is another model call, so this
+ *  bounds both the cost and how long a stream stays open. */
+export const MAX_TOOL_STEPS = 5;

@@ -1,10 +1,17 @@
 import { Router } from "express";
+import type { Content, FunctionCall, Part } from "@google/genai";
 import { env } from "../config/env.js";
 import { gemini, isGeminiConfigured } from "../config/gemini.js";
 import { validateChatMessageRequest, windowHistory, type HistoryTurn } from "../lib/chat-request/chat-request.js";
-import { toGeminiContents } from "../lib/history/history.js";
-import { MAX_CHAT_TOKENS, isChatFull } from "../lib/limits/limits.js";
-import { streamSSE } from "../lib/sse/sse.js";
+import {
+  toFunctionResponseParts,
+  toGeminiContents,
+  toGeminiTools,
+  type ToolOutcome,
+} from "../lib/history/history.js";
+import { MAX_CHAT_TOKENS, MAX_TOOL_STEPS, isChatFull } from "../lib/limits/limits.js";
+import { streamSSE, type StreamEvent, type ToolStatus } from "../lib/sse/sse.js";
+import { findTool, toolDeclarations } from "../tools/registry.js";
 import { estimateTokens } from "../lib/tokens/tokens.js";
 import {
   messagesAfterSummary,
@@ -24,6 +31,72 @@ const router = Router();
 router.use(requireAuth, chatLimiter);
 
 const MAX_TITLE_LENGTH = 60;
+
+type PlannedCall = {
+  id: string;
+  name: string;
+  label: string;
+  call: FunctionCall;
+};
+
+type CallRun = { planned: PlannedCall; ok: boolean; outcome: ToolOutcome };
+
+/** Labelled before it runs, because the "running" line has to name the work
+ *  while it is still happening. */
+const planCall = (call: FunctionCall, index: number): PlannedCall => {
+  const name = call.name ?? "unknown";
+  const tool = findTool(call.name);
+  return {
+    id: call.id ?? `${name}-${index}`,
+    name,
+    label: tool ? tool.describe(call.args ?? {}) : `Running ${name}`,
+    call,
+  };
+};
+
+const runCall = async (planned: PlannedCall, signal: AbortSignal): Promise<CallRun> => {
+  const { call, name } = planned;
+  const tool = findTool(call.name);
+  const failed = (error: string): CallRun => ({
+    planned,
+    ok: false,
+    outcome: { id: call.id, name: call.name, output: { error } },
+  });
+
+  if (!tool) return failed(`No tool named "${name}" exists.`);
+
+  try {
+    const output = await tool.run(call.args ?? {}, signal);
+    return { planned, ok: true, outcome: { id: call.id, name: call.name, output } };
+  } catch (error) {
+    // The chat stream is already gone, so there is nobody to report to.
+    if (signal.aborted) throw error;
+    return failed(error instanceof Error ? error.message : "The tool failed.");
+  }
+};
+
+/** Announces every call, runs them together, then announces each outcome.
+ *  Parallel because one round can ask for several at once. */
+async function* runToolCalls(
+  calls: FunctionCall[],
+  signal: AbortSignal,
+): AsyncGenerator<StreamEvent, ToolOutcome[]> {
+  const planned = calls.map(planCall);
+
+  for (const { id, name, label } of planned) {
+    yield { kind: "tool", activity: { id, name, label, status: "running" } };
+  }
+
+  const runs = await Promise.all(planned.map((call) => runCall(call, signal)));
+
+  for (const run of runs) {
+    const { id, name, label } = run.planned;
+    const status: ToolStatus = run.ok ? "done" : "failed";
+    yield { kind: "tool", activity: { id, name, label, status } };
+  }
+
+  return runs.map((run) => run.outcome);
+}
 
 /**
  * Plumbing for lib/summary: every rule about what to fold and when lives there,
@@ -141,26 +214,61 @@ router.post("/", async (req, res) => {
   let replyTokens: number | undefined;
 
   await streamSSE(res, async function* (abortSignal) {
-    const stream = await gemini.models.generateContentStream({
-      model: env.geminiModel,
-      contents,
-      config: {
-        abortSignal,
-        // The summary is context, not a turn anyone took, and the guard text
-        // marks it as a record rather than something to act on.
-        ...(summaryText ? { systemInstruction: toSystemInstruction(summaryText) } : {}),
-      },
-    });
+    const conversation: Content[] = [...contents];
+    const tools = toGeminiTools(toolDeclarations);
 
-    for await (const chunk of stream) {
-      // Totals ride on the chunks; the last one carries the complete figure,
-      // and an aborted stream may never deliver it.
-      promptTokens = chunk.usageMetadata?.promptTokenCount ?? promptTokens;
-      replyTokens = chunk.usageMetadata?.candidatesTokenCount ?? replyTokens;
-      const text = chunk.text ?? "";
-      fullText += text;
-      yield text;
+    for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
+      const stream = await gemini.models.generateContentStream({
+        model: env.geminiModel,
+        contents: conversation,
+        config: {
+          abortSignal,
+          tools,
+          // The summary is context, not a turn anyone took, and the guard text
+          // marks it as a record rather than something to act on.
+          ...(summaryText ? { systemInstruction: toSystemInstruction(summaryText) } : {}),
+        },
+      });
+
+      const calls: FunctionCall[] = [];
+      const modelParts: Part[] = [];
+      let roundReplyTokens: number | undefined;
+
+      for await (const chunk of stream) {
+        // Totals ride on the chunks; the last one carries the complete figure,
+        // and an aborted stream may never deliver it.
+        promptTokens = chunk.usageMetadata?.promptTokenCount ?? promptTokens;
+        roundReplyTokens = chunk.usageMetadata?.candidatesTokenCount ?? roundReplyTokens;
+
+        // Read from the parts rather than chunk.text/chunk.functionCalls: those
+        // getters log a warning whenever a response mixes text and calls.
+        for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
+          modelParts.push(part);
+          if (part.functionCall) calls.push(part.functionCall);
+          if (part.thought || !part.text) continue;
+
+          fullText += part.text;
+          yield { kind: "delta", text: part.text };
+        }
+      }
+
+      // Each round is priced separately, so the figures add rather than replace.
+      if (roundReplyTokens !== undefined) replyTokens = (replyTokens ?? 0) + roundReplyTokens;
+
+      if (calls.length === 0) return;
+
+      // Echoed back verbatim: Gemini 3 rejects a rebuilt turn whose functionCall
+      // parts have lost their thought signature.
+      conversation.push({ role: "model", parts: modelParts });
+
+      const outcomes = yield* runToolCalls(calls, abortSignal);
+      conversation.push({ role: "user", parts: toFunctionResponseParts(outcomes) });
     }
+
+    // Out of steps rather than out of things to say — better than silence.
+    const notice = "I could not finish that — it needed more tool steps than I am allowed.";
+    fullText += notice;
+    yield { kind: "delta", text: notice };
   });
 
   // Only persist an assistant turn if something actually came back — a
