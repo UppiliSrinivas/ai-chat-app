@@ -1,6 +1,17 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Moss: a dark green-cast ground. The two hazes exist so the composer's
+   backdrop-filter has something to blur — over flat black it reads as grey. */
+@theme {
+  --color-ground: #0e1413;
+  --color-surface: #131b1a;
+  --color-haze-1: #1e4a3f;
+  --color-haze-2: #14303a;
+  --color-glass: rgba(226, 240, 232, 0.06);
+  --color-edge: rgba(226, 240, 232, 0.14);
+}
+
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -128,7 +139,7 @@
 
 body {
   margin: 0;
-  background: #000;
+  background: var(--color-ground);
   /* The thread is the only scroller. Without this, dragging past its end
      rubber-bands the page behind it and drags the address bar with it. */
   overscroll-behavior: none;

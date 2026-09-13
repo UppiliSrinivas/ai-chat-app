@@ -11,7 +11,7 @@ import {
 } from "../lib/history/history.js";
 import { MAX_CHAT_TOKENS, MAX_TOOL_STEPS, isChatFull } from "../lib/limits/limits.js";
 import { streamSSE, type StreamEvent, type ToolStatus } from "../lib/sse/sse.js";
-import { findTool, toolDeclarations } from "../tools/registry.js";
+import { findTool, toolDeclarations, type ToolContext } from "../tools/registry.js";
 import { estimateTokens } from "../lib/tokens/tokens.js";
 import {
   messagesAfterSummary,
@@ -54,7 +54,7 @@ const planCall = (call: FunctionCall, index: number): PlannedCall => {
   };
 };
 
-const runCall = async (planned: PlannedCall, signal: AbortSignal): Promise<CallRun> => {
+const runCall = async (planned: PlannedCall, context: ToolContext): Promise<CallRun> => {
   const { call, name } = planned;
   const tool = findTool(call.name);
   const failed = (error: string): CallRun => ({
@@ -66,11 +66,11 @@ const runCall = async (planned: PlannedCall, signal: AbortSignal): Promise<CallR
   if (!tool) return failed(`No tool named "${name}" exists.`);
 
   try {
-    const output = await tool.run(call.args ?? {}, signal);
+    const output = await tool.run(call.args ?? {}, context);
     return { planned, ok: true, outcome: { id: call.id, name: call.name, output } };
   } catch (error) {
     // The chat stream is already gone, so there is nobody to report to.
-    if (signal.aborted) throw error;
+    if (context.signal.aborted) throw error;
     return failed(error instanceof Error ? error.message : "The tool failed.");
   }
 };
@@ -79,7 +79,7 @@ const runCall = async (planned: PlannedCall, signal: AbortSignal): Promise<CallR
  *  Parallel because one round can ask for several at once. */
 async function* runToolCalls(
   calls: FunctionCall[],
-  signal: AbortSignal,
+  context: ToolContext,
 ): AsyncGenerator<StreamEvent, ToolOutcome[]> {
   const planned = calls.map(planCall);
 
@@ -87,7 +87,7 @@ async function* runToolCalls(
     yield { kind: "tool", activity: { id, name, label, status: "running" } };
   }
 
-  const runs = await Promise.all(planned.map((call) => runCall(call, signal)));
+  const runs = await Promise.all(planned.map((call) => runCall(call, context)));
 
   for (const run of runs) {
     const { id, name, label } = run.planned;
@@ -206,6 +206,9 @@ router.post("/", async (req, res) => {
   }
   await chat.save();
 
+  // Read off the chat rather than req.userId: the field is required, and the
+  // chat was already fetched scoped to that same user.
+  const ownerId = chat.userId.toString();
   const contents = toGeminiContents({ message, history: priorTurns });
   const summaryText = summary?.text ?? "";
 
@@ -261,7 +264,7 @@ router.post("/", async (req, res) => {
       // parts have lost their thought signature.
       conversation.push({ role: "model", parts: modelParts });
 
-      const outcomes = yield* runToolCalls(calls, abortSignal);
+      const outcomes = yield* runToolCalls(calls, { userId: ownerId, signal: abortSignal });
       conversation.push({ role: "user", parts: toFunctionResponseParts(outcomes) });
     }
 
