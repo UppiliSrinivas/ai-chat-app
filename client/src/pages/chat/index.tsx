@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, Menu } from 'lucide-react'
+import { ArrowDown, Menu, PanelLeft } from 'lucide-react'
 import Composer from '../../components/composser'
 import Message from '../../components/message'
 import SaveChatNudge from '../../components/save-chat-nudge/SaveChatNudge'
@@ -13,6 +13,18 @@ import type { ToolActivity } from '../../api/streamChat'
 
 /** Stable identity, so a non-streaming turn doesn't re-render on every keystroke. */
 const NO_TOOLS: ToolActivity[] = []
+
+const COLLAPSE_KEY = 'sidebar-collapsed'
+
+/** Remembered per browser so the layout survives a reload. A blocked or empty
+ *  store just means the sidebar starts open. */
+const readCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 import { shouldShowSaveNudge } from '../../lib/nudge'
 
 export default function ChatPage() {
@@ -44,6 +56,17 @@ export default function ChatPage() {
     const removeProject = useProjectStore((state) => state.removeProject)
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readCollapsed)
+
+    const toggleSidebar = () => {
+        const next = !isSidebarCollapsed
+        setIsSidebarCollapsed(next)
+        try {
+            localStorage.setItem(COLLAPSE_KEY, String(next))
+        } catch {
+            // A remembered preference isn't worth failing the click over.
+        }
+    }
     // Turn count when the guest last closed the sign-in banner, or null if never.
     const [dismissedAtTurn, setDismissedAtTurn] = useState<number | null>(null)
 
@@ -89,12 +112,14 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="flex h-dvh bg-black w-full">
+        <div className="flex h-dvh w-full bg-ground">
             <ChatSidebar
                 chats={chats}
                 activeChatId={chatId}
                 isOpen={isSidebarOpen}
+                isCollapsed={isSidebarCollapsed}
                 onClose={() => setIsSidebarOpen(false)}
+                onToggleCollapse={toggleSidebar}
                 onSelect={selectChat}
                 onNewChat={startNewChat}
                 onDelete={deleteChat}
@@ -110,15 +135,37 @@ export default function ChatPage() {
                 onDeleteProject={handleDeleteProject}
             />
 
-            <div className="relative flex-1">
+            <div className="relative isolate flex-1 overflow-hidden">
+                {/* What the composer's backdrop-blur samples. Without them the
+                    frosted surface has nothing behind it and reads as grey. */}
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -bottom-1/4 -left-[8%] -z-10 h-[70%] w-[60%] rounded-full bg-haze-1/70 blur-[70px]"
+                />
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -right-[6%] -bottom-[20%] -z-10 h-[62%] w-[55%] rounded-full bg-haze-2/70 blur-[70px]"
+                />
+
                 <button
                     type="button"
                     onClick={() => setIsSidebarOpen(true)}
                     aria-label="Open chat history"
-                    className="absolute top-3 left-3 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-black/80 text-zinc-400 backdrop-blur-sm hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
+                    className="absolute top-3 left-3 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-ground/80 text-zinc-400 backdrop-blur-sm hover:bg-surface hover:text-zinc-100 md:hidden"
                 >
                     <Menu size={18} />
                 </button>
+
+                {isSidebarCollapsed && (
+                    <button
+                        type="button"
+                        onClick={toggleSidebar}
+                        aria-label="Expand sidebar"
+                        className="absolute top-3 left-3 z-30 hidden h-9 w-9 items-center justify-center rounded-full bg-ground/80 text-zinc-400 backdrop-blur-sm hover:bg-surface hover:text-zinc-100 md:flex"
+                    >
+                        <PanelLeft size={18} />
+                    </button>
+                )}
 
                 {turns.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 px-4">
@@ -191,7 +238,7 @@ export default function ChatPage() {
                         </div>
 
                         <div className="absolute inset-x-0 bottom-0">
-                            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-black via-black/2 to-transparent" />
+                            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-ground via-ground/60 to-transparent" />
                             {!isPinned && (
                                 <div className="relative flex justify-center pb-3">
                                     <button

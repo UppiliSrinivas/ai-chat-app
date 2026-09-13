@@ -12,6 +12,7 @@ const chats = [
 const setup = (props: Partial<ChatSidebarProps> = {}) => {
   const handlers = {
     onClose: vi.fn(),
+    onToggleCollapse: vi.fn(),
     onSelect: vi.fn(),
     onNewChat: vi.fn(),
     onDelete: vi.fn(),
@@ -27,6 +28,7 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
       chats={chats}
       activeChatId={null}
       isOpen={false}
+      isCollapsed={false}
       user={null}
       projects={[]}
       projectError={null}
@@ -111,7 +113,7 @@ describe('ChatSidebar', () => {
   it('closes when the backdrop is clicked', async () => {
     const { onClose, user } = setup({ isOpen: true })
 
-    await user.click(document.querySelector('div[aria-hidden="true"]')!)
+    await user.click(screen.getByTestId('sidebar-backdrop'))
 
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -119,7 +121,7 @@ describe('ChatSidebar', () => {
   it('shows no backdrop while closed', () => {
     setup({ isOpen: false })
 
-    expect(document.querySelector('div[aria-hidden="true"]')).toBeNull()
+    expect(screen.queryByTestId('sidebar-backdrop')).not.toBeInTheDocument()
   })
 
   it('signs a real account out', async () => {
@@ -306,5 +308,29 @@ describe('ChatSidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(onDelete).toHaveBeenCalledExactlyOnceWith('c')
+  })
+})
+
+describe('ChatSidebar collapsing', () => {
+  it('offers a collapse control', async () => {
+    const { onToggleCollapse, user } = setup()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(onToggleCollapse).toHaveBeenCalledOnce()
+  })
+
+  // Collapsed on desktop it is off-screen, so its buttons must not stay
+  // tab-reachable — the same reason the mobile drawer is inert when shut.
+  it('is inert once collapsed', () => {
+    setup({ isCollapsed: true })
+
+    expect(screen.getByRole('complementary', { hidden: true })).toHaveAttribute('inert')
+  })
+
+  it('stays reachable while expanded', () => {
+    setup({ isCollapsed: false, isOpen: true })
+
+    expect(screen.getByRole('complementary')).not.toHaveAttribute('inert')
   })
 })

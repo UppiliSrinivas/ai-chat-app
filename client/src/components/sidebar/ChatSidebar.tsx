@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LogIn, LogOut, Plus, X } from 'lucide-react'
+import { LogIn, LogOut, PanelLeft, Plus, X } from 'lucide-react'
 import type { User } from '../../api/auth'
 import type { ChatSummary } from '../../api/chats'
 import type { ProjectSummary } from '../../api/projects'
@@ -14,11 +14,14 @@ export type ChatSidebarProps = {
   chats: ChatSummary[]
   activeChatId: string | null
   isOpen: boolean
+  /** Desktop only: the drawer on mobile is driven by `isOpen` instead. */
+  isCollapsed: boolean
   user: User | null
   projects: ProjectSummary[]
   projectError: string | null
   pendingProjectId: string | null
   onClose: () => void
+  onToggleCollapse: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
   onDelete: (chatId: string) => void
@@ -77,11 +80,13 @@ export default function ChatSidebar({
   chats,
   activeChatId,
   isOpen,
+  isCollapsed,
   user,
   projects,
   projectError,
   pendingProjectId,
   onClose,
+  onToggleCollapse,
   onSelect,
   onNewChat,
   onDelete,
@@ -115,7 +120,9 @@ export default function ChatSidebar({
   // reachable without this. Desktop always shows it, hence the width check —
   // `inert` is an attribute, so no `md:` class can undo it.
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const isHidden = !isDesktop && !isOpen
+  const isDrawerShut = !isDesktop && !isOpen
+  const isRailCollapsed = isDesktop && isCollapsed
+  const isHidden = isDrawerShut || isRailCollapsed
 
   // Three states, not two: a visitor who has never sent a message has no
   // account at all, so "Sign out" would be offering to end nothing.
@@ -147,15 +154,23 @@ export default function ChatSidebar({
       {isOpen && (
         <div
           onClick={onClose}
-          className="fade-in fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] md:hidden"
+          data-testid="sidebar-backdrop"
+          className="fade-in fixed inset-0 z-40 bg-ground/70 backdrop-blur-[2px] md:hidden"
           aria-hidden="true"
         />
       )}
 
       <aside
         inert={isHidden}
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-300 ease-out md:static md:z-auto md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col border-r border-edge bg-surface transition-transform duration-300 ease-out md:static md:z-auto md:translate-x-0 md:overflow-hidden md:transition-[width] ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-72'}`}
       >
+        <div className="relative isolate flex h-full w-72 shrink-0 flex-col overflow-hidden">
+          {/* Echoes the glow low in the chat pane, so the two surfaces read as
+              one light source rather than two separate effects. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-[18%] -left-[30%] -z-10 h-[42%] w-[160%] rounded-full bg-haze-1/45 blur-[64px]"
+          />
         <div className="flex items-center gap-2 p-3">
           <button
             type="button"
@@ -172,6 +187,14 @@ export default function ChatSidebar({
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 md:hidden"
           >
             <X size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label="Collapse sidebar"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 md:flex"
+          >
+            <PanelLeft size={18} />
           </button>
         </div>
 
@@ -217,7 +240,7 @@ export default function ChatSidebar({
           </nav>
         </div>
 
-        <div className="border-t border-zinc-800 p-3">
+        <div className="border-t border-edge p-3">
           <p className="truncate px-1 pb-2 text-xs text-zinc-500">{user?.email ?? 'Guest'}</p>
           {/* A guest's only identity is the session cookie, so signing out would
               strand their chats with no way back in. Offer the upgrade instead. */}
@@ -245,6 +268,8 @@ export default function ChatSidebar({
           <p className="px-1 pt-2 text-center text-[11px] text-zinc-600">
             {formatVersion(APP_VERSION, APP_COMMIT)}
           </p>
+        </div>
+
         </div>
 
         <PromptDialog

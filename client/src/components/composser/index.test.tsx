@@ -94,16 +94,18 @@ describe('Composer', () => {
 })
 
 describe('Composer token count', () => {
-  it('appends a compact token count once the chat has one', () => {
+  it('shows a compact token count once the chat has one', () => {
     render(<Composer onSend={vi.fn()} tokenCount={2400} />)
 
-    expect(screen.getByText('AI-Chat-App can make mistakes - 2.4K tokens')).toBeInTheDocument()
+    expect(screen.getByText('2.4K tokens')).toBeInTheDocument()
+    expect(screen.getByText('AI-Chat-App can make mistakes')).toBeInTheDocument()
   })
 
   // "0 tokens" on a brand new chat reads as something being broken.
   it('says nothing about tokens before the first message', () => {
     render(<Composer onSend={vi.fn()} tokenCount={0} />)
 
+    expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     expect(screen.getByText('AI-Chat-App can make mistakes')).toBeInTheDocument()
   })
 })
