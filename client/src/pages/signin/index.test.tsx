@@ -15,6 +15,12 @@ vi.mock('@react-oauth/google', () => ({
   },
 }))
 
+// The page reads this at module scope to decide whether to render the Google
+// button, and the real value only lives in a gitignored .env — so a fresh
+// clone or CI has none. Stubbed before the imports below, which is when that
+// module-level const is captured.
+vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id.apps.googleusercontent.com')
+
 const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { default: SignInPage } = await import('./index')
 
