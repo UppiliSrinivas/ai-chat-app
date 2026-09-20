@@ -99,6 +99,40 @@ describe("searchMyChats", () => {
     expect(result.ok && result.matches[0]?.snippet).toBe("Kubernetes setup");
   });
 
+  // The phrase search is what made the model retry with broader words, at a
+  // Gemini request per retry.
+  it("matches any word, not the whole phrase", async () => {
+    stubChats([]);
+
+    await searchMyChats({ query: "React hooks" }, "user-1");
+
+    const { title } = (filterUsed().$or as { title: RegExp }[])[0]!;
+    expect(title.test("using hooks in React")).toBe(true);
+    expect(title.test("React patterns")).toBe(true);
+    expect(title.test("hooks explained")).toBe(true);
+    expect(title.test("Vue composition")).toBe(false);
+  });
+
+  it("ignores words too short to be worth matching on", async () => {
+    stubChats([]);
+
+    await searchMyChats({ query: "a React app" }, "user-1");
+
+    const { title } = (filterUsed().$or as { title: RegExp }[])[0]!;
+    expect(title.source).toBe("React|app");
+  });
+
+  // An all-short query would otherwise build an empty alternation, and //i
+  // matches every string there is.
+  it("never builds a pattern that matches everything", async () => {
+    stubChats([]);
+
+    await searchMyChats({ query: "a b" }, "user-1");
+
+    const { title } = (filterUsed().$or as { title: RegExp }[])[0]!;
+    expect(title.test("something unrelated")).toBe(false);
+  });
+
   // ":(" would throw as a raw pattern and "(a+)+$" would pin a CPU, and both
   // arrive as ordinary things a person might type.
   it("treats a query with regex characters as literal text", async () => {

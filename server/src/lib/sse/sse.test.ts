@@ -186,3 +186,32 @@ describe("streamSSE tool frames", () => {
     expect(res.chunks[0]).toContain('"tool"');
   });
 });
+
+describe("streamSSE error frames", () => {
+  it("reports a thrower's code alongside its message", async () => {
+    const res = new FakeResponse();
+    const produce: EventProducer = async function* () {
+      throw Object.assign(new Error("The model is busy right now."), { code: "MODEL_BUSY" });
+    };
+
+    await streamSSE(asResponse(res), produce);
+
+    expect(res.chunks.at(-1)).toBe(
+      `event: error\ndata: ${JSON.stringify({ code: "MODEL_BUSY", message: "The model is busy right now." })}\n\n`,
+    );
+  });
+
+  // A plain Error has no code, and inventing one would be a lie.
+  it("omits the code when the thrower supplied none", async () => {
+    const res = new FakeResponse();
+    const produce: EventProducer = async function* () {
+      throw new Error("Something went wrong");
+    };
+
+    await streamSSE(asResponse(res), produce);
+
+    expect(res.chunks.at(-1)).toBe(
+      `event: error\ndata: ${JSON.stringify({ message: "Something went wrong" })}\n\n`,
+    );
+  });
+});

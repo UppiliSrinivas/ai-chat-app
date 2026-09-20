@@ -4,9 +4,15 @@
   "version": "0.0.0",
   "description": "Git hook tooling only — client/ and server/ remain independent npm packages, see CLAUDE.md",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck": "npm --prefix client run typecheck && npm --prefix server run typecheck"
   },
   "devDependencies": {
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0"
+  },
+  "lint-staged": {
+    "server/**/*.{ts,js}": ["npm --prefix server run lint"],
+    "client/**/*.{ts,tsx}": ["npm --prefix client run lint"]
   }
 }

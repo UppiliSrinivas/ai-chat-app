@@ -86,7 +86,10 @@ export const streamSSE = async (res: Response, produce: EventProducer): Promise<
     console.error("[sse] stream failed:", error);
 
     const reason = error instanceof Error ? error.message : "Something went wrong";
-    res.write(`event: error\ndata: ${JSON.stringify({ message: reason })}\n\n`);
+    const code = (error as { code?: unknown })?.code;
+    const failure = typeof code === "string" ? { code, message: reason } : { message: reason };
+
+    res.write(`event: error\ndata: ${JSON.stringify(failure)}\n\n`);
     res.end();
   } finally {
     clearInterval(heartbeat);
