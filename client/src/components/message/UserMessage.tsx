@@ -58,7 +58,7 @@ export default function UserMessage({
   return (
     <div className={`group flex flex-col items-end gap-1.5 ${isEditing ? 'w-full' : 'max-w-lg'}`}>
       {isEditing ? (
-        <div className="w-full rounded-3xl bg-zinc-800 p-4">
+        <div className="w-full rounded-3xl border border-edge bg-glass p-4 backdrop-blur-md">
           <textarea
             autoFocus
             value={draft}
@@ -85,7 +85,7 @@ export default function UserMessage({
           </div>
         </div>
       ) : (
-        <div className="rounded-3xl bg-zinc-800 px-4 py-2.5 text-[15px] leading-6 whitespace-pre-wrap text-zinc-100">
+        <div className="rounded-3xl border border-edge bg-glass px-4 py-2.5 text-[15px] leading-6 whitespace-pre-wrap text-zinc-100 backdrop-blur-md">
           {content}
         </div>
       )}

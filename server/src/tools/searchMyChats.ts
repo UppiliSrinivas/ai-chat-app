@@ -8,7 +8,7 @@ export type SearchMyChatsArgs = { query: string };
 export const searchMyChatsDeclaration = {
   name: "searchMyChats",
   description:
-    "Search the user's own past conversations by keyword. Use this when they refer to something discussed earlier, ask what they said about a topic, or ask you to find a previous chat. Only ever searches their own chats.",
+    "Search the user's own past conversations by keyword. Use this when they refer to something discussed earlier, ask what they said about a topic, or ask you to find a previous chat. Only ever searches their own chats. Matches any of the words given, so pass the whole topic at once. If nothing matches, tell the user — do not search again with different words.",
   parameters: {
     type: "object",
     properties: {
@@ -59,10 +59,18 @@ type StoredChat = {
 
 const failure = (code: SearchErrorCode, message: string): SearchMyChatsResult => ({ ok: false, code, message });
 
-/** The query is the user's own words, so every metacharacter is literal. Without
- *  this, ":(" throws and "(a+)+$" pins a CPU on catastrophic backtracking. */
-const toLiteralPattern = (query: string): RegExp =>
-  new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Any word, not the whole phrase: "React hooks" has to find a chat saying
+ *  "hooks in React", or the model searches again and spends another round. */
+const toWordPattern = (query: string): RegExp => {
+  const words = query.split(/\s+/).filter((word) => word.length >= MIN_QUERY_CHARS);
+  // Every word was too short to be worth matching on, so fall back to the
+  // query itself rather than building an empty alternation that matches all.
+  const parts = words.length > 0 ? words : [query];
+
+  return new RegExp(parts.map(escapeRegex).join("|"), "i");
+};
 
 const snippetAround = (text: string, pattern: RegExp): string => {
   const hit = pattern.exec(text);
@@ -95,7 +103,7 @@ export const searchMyChats = async (
     return failure("QUERY_TOO_SHORT", `Give at least ${MIN_QUERY_CHARS} characters to search for.`);
   }
 
-  const pattern = toLiteralPattern(trimmed);
+  const pattern = toWordPattern(trimmed);
 
   try {
     // userId is part of the filter, never a check afterwards: another user's

@@ -1,0 +1,5 @@
+# .husky/pre-push
+npm --prefix server run typecheck
+npm --prefix client run typecheck
+npm --prefix server test
+npm --prefix client test
