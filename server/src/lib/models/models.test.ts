@@ -7,7 +7,8 @@ import {
 } from "./models.js";
 
 /** Trimmed from a real ListModels response — one entry per family that the
- *  filter has to make a decision about. */
+ *  filter has to make a decision about. Low-context entries exercise the
+ *  context floor; high-context entries test the pattern match itself. */
 const listModelsPayload = {
   models: [
     { name: "models/gemini-3-flash-preview", displayName: "Gemini 3 Flash Preview", inputTokenLimit: 1048576, supportedGenerationMethods: ["generateContent"] },
@@ -21,6 +22,11 @@ const listModelsPayload = {
     { name: "models/antigravity-preview-09-2026", displayName: "Antigravity Agent Preview", inputTokenLimit: 1048576, supportedGenerationMethods: ["generateContent"] },
     { name: "models/deep-research-preview-04-2026", displayName: "Deep Research Preview", inputTokenLimit: 131072, supportedGenerationMethods: ["generateContent"] },
     { name: "models/embedding-001", displayName: "Embedding 001", inputTokenLimit: 2048, supportedGenerationMethods: ["embedContent"] },
+    // High-context variants for pattern matching verification
+    { name: "models/gemini-3.1-flash-tts-preview", displayName: "Gemini 3.1 Flash TTS Preview", inputTokenLimit: 1048576, supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-3.5-transcribe-pro", displayName: "Gemini 3.5 Transcribe Pro", inputTokenLimit: 262144, supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-2.5-computer-use-preview-10-2025", displayName: "Gemini 2.5 Computer Use Preview", inputTokenLimit: 131072, supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-nano-banana-preview", displayName: "Gemini Nano Banana Preview", inputTokenLimit: 131072, supportedGenerationMethods: ["generateContent"] },
   ],
 };
 
@@ -40,13 +46,17 @@ describe("toChatModels", () => {
   });
 
   it.each([
-    ["speech", "gemini-2.5-flash-preview-tts"],
+    ["speech (low context)", "gemini-2.5-flash-preview-tts"],
     ["image", "gemini-3-pro-image-preview"],
     ["music", "lyria-3.5"],
-    ["transcription", "gemini-3.5-transcribe"],
+    ["transcription (low context)", "gemini-3.5-transcribe"],
     ["robotics", "gemini-robotics-er-2-preview"],
     ["agent", "antigravity-preview-09-2026"],
     ["deep research", "deep-research-preview-04-2026"],
+    ["speech (high context)", "gemini-3.1-flash-tts-preview"],
+    ["transcription (high context)", "gemini-3.5-transcribe-pro"],
+    ["computer-use", "gemini-2.5-computer-use-preview-10-2025"],
+    ["nano-banana", "gemini-nano-banana-preview"],
   ])("drops the %s model, which also advertises generateContent", (_label, id) => {
     expect(idsOf(toChatModels(listModelsPayload))).not.toContain(id);
   });
@@ -80,6 +90,29 @@ describe("toChatModels", () => {
       expect(toChatModels(raw)).toEqual([]);
     },
   );
+
+  it("covers all NON_CHAT_PATTERNS with at least one high-context fixture", () => {
+    const patterns = [
+      "-tts",
+      "-image",
+      "nano-banana",
+      "lyria",
+      "transcribe",
+      "robotics",
+      "computer-use",
+      "deep-research",
+      "antigravity",
+    ];
+
+    const fixtureIds = listModelsPayload.models
+      .filter((m) => m.inputTokenLimit >= 100_000)
+      .map((m) => m.name.replace(/^models\//, ""));
+
+    for (const pattern of patterns) {
+      const covered = fixtureIds.some((id) => id.includes(pattern));
+      expect(covered, `Pattern "${pattern}" not covered by any high-context fixture`).toBe(true);
+    }
+  });
 });
 
 describe("createModelCatalogue", () => {
