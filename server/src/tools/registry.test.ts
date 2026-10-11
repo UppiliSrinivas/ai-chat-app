@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { findTool, toolDeclarations } from "./registry.js";
+import { availableToolDeclarations, findTool, toolDeclarations } from "./registry.js";
 
 describe("toolDeclarations", () => {
   it("offers every registered tool", () => {
-    expect(toolDeclarations.map((tool) => tool.name).sort()).toEqual(["getWeather", "searchMyChats"]);
+    expect(toolDeclarations.map((tool) => tool.name).sort()).toEqual(["getWeather", "searchMyChats", "searchMyFiles"]);
   });
 
   it("offers getWeather with plain JSON Schema parameters", () => {
@@ -39,7 +39,7 @@ describe("the searchMyChats entry", () => {
 
   // Rejected before any database call, so this needs no connection.
   it("turns a missing query into a rejected search rather than a crash", async () => {
-    const context = { userId: "user-1", signal: new AbortController().signal };
+    const context = { userId: "user-1", chatId: "chat-1", signal: new AbortController().signal };
 
     await expect(search.run({}, context)).resolves.toMatchObject({ ok: false, code: "QUERY_TOO_SHORT" });
   });
@@ -59,12 +59,41 @@ describe("the getWeather entry", () => {
   });
 
   it("turns a missing place into a rejected lookup rather than a crash", async () => {
-    const context = { userId: "user-1", signal: new AbortController().signal };
+    const context = { userId: "user-1", chatId: "chat-1", signal: new AbortController().signal };
 
     await expect(weather.run({}, context)).resolves.toEqual({
       ok: false,
       code: "PLACE_NOT_FOUND",
       message: "No place was given to look up.",
     });
+  });
+});
+
+describe("availableToolDeclarations", () => {
+  const names = (hasFiles: boolean) => availableToolDeclarations({ hasFiles }).map((tool) => tool.name);
+
+  it("offers file search when the chat has files", () => {
+    expect(names(true)).toContain("searchMyFiles");
+  });
+
+  // Every call spends an embedding, so it isn't offered when it can only come back empty.
+  it("withholds file search when there are no files, keeping the rest", () => {
+    expect(names(false)).not.toContain("searchMyFiles");
+    expect(names(false)).toEqual(expect.arrayContaining(["getWeather", "searchMyChats"]));
+  });
+});
+
+describe("the searchMyFiles entry", () => {
+  const search = findTool("searchMyFiles")!;
+
+  it("labels a call using the query the model supplied", () => {
+    expect(search.describe({ query: "refunds" })).toBe('Searching your files for "refunds"');
+  });
+
+  // Rejected before any embedding or database call, so this needs neither.
+  it("turns a missing query into a rejected search rather than a crash", async () => {
+    const context = { userId: "user-1", chatId: "chat-1", signal: new AbortController().signal };
+
+    await expect(search.run({}, context)).resolves.toMatchObject({ ok: false, code: "QUERY_TOO_SHORT" });
   });
 });
