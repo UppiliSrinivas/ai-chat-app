@@ -8,6 +8,7 @@ import PromptDialog from '../prompt-dialog/PromptDialog'
 import ChatRow from './ChatRow'
 import ProjectList from './ProjectList'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { useOptimisticSidebar } from '../../hooks/useOptimisticSidebar'
 import { APP_COMMIT, APP_VERSION, formatVersion } from '../../lib/version'
 
 export type ChatSidebarProps = {
@@ -24,13 +25,13 @@ export type ChatSidebarProps = {
   onToggleCollapse: () => void
   onSelect: (chatId: string) => void
   onNewChat: () => void
-  onDelete: (chatId: string) => void
+  onDelete: (chatId: string) => Promise<void>
   onSignOut: () => void
   onUpgrade: () => void
   onCreateProject: (name: string) => void
-  onRenameProject: (projectId: string, name: string) => void
+  onRenameProject: (projectId: string, name: string) => Promise<void>
   onNewChatInProject: (projectId: string) => void
-  onDeleteProject: (projectId: string) => void
+  onDeleteProject: (projectId: string) => Promise<void>
 }
 
 type PendingDelete =
@@ -102,17 +103,24 @@ export default function ChatSidebar({
   // Which project the name dialog is for — a new one, or one being renamed.
   const [projectPrompt, setProjectPrompt] = useState<ProjectPrompt | null>(null)
 
+  const { visibleLists, runEdit } = useOptimisticSidebar({ chats, projects })
+
   const confirmDelete = () => {
     if (!pendingDelete) return
-    if (pendingDelete.kind === 'chat') onDelete(pendingDelete.id)
-    else onDeleteProject(pendingDelete.id)
+    const { id } = pendingDelete
+    if (pendingDelete.kind === 'chat') runEdit({ kind: 'deleteChat', chatId: id }, () => onDelete(id))
+    else runEdit({ kind: 'deleteProject', projectId: id }, () => onDeleteProject(id))
     setPendingDelete(null)
   }
 
   const submitProjectName = (name: string) => {
     if (!projectPrompt) return
-    if (projectPrompt.mode === 'create') onCreateProject(name)
-    else onRenameProject(projectPrompt.id, name)
+    if (projectPrompt.mode === 'create') {
+      onCreateProject(name)
+    } else {
+      const { id } = projectPrompt
+      runEdit({ kind: 'renameProject', projectId: id, name }, () => onRenameProject(id, name))
+    }
     setProjectPrompt(null)
   }
 
@@ -145,7 +153,7 @@ export default function ChatSidebar({
 
   // Chats inside a project are listed under it, so showing them here too would
   // make the same chat look like it belongs nowhere.
-  const looseChats = chats.filter((chat) => chat.projectId === null)
+  const looseChats = visibleLists.chats.filter((chat) => chat.projectId === null)
   const deletePrompt = describeDelete(pendingDelete)
   const namePrompt = describePrompt(projectPrompt)
 
@@ -200,8 +208,8 @@ export default function ChatSidebar({
 
         <div className="no-scrollbar flex-1 overflow-y-auto pb-3">
           <ProjectList
-            projects={projects}
-            chats={chats}
+            projects={visibleLists.projects}
+            chats={visibleLists.chats}
             activeChatId={activeChatId}
             pendingProjectId={pendingProjectId}
             error={projectError}

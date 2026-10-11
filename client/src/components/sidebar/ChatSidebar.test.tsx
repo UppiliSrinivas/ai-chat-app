@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatSidebar, { type ChatSidebarProps } from './ChatSidebar'
 import { MAX_CHATS_PER_PROJECT } from '../../lib/limits'
@@ -15,13 +15,13 @@ const setup = (props: Partial<ChatSidebarProps> = {}) => {
     onToggleCollapse: vi.fn(),
     onSelect: vi.fn(),
     onNewChat: vi.fn(),
-    onDelete: vi.fn(),
+    onDelete: vi.fn().mockResolvedValue(undefined),
     onSignOut: vi.fn(),
     onUpgrade: vi.fn(),
     onCreateProject: vi.fn(),
-    onRenameProject: vi.fn(),
+    onRenameProject: vi.fn().mockResolvedValue(undefined),
     onNewChatInProject: vi.fn(),
-    onDeleteProject: vi.fn(),
+    onDeleteProject: vi.fn().mockResolvedValue(undefined),
   }
   render(
     <ChatSidebar
@@ -341,5 +341,90 @@ describe('ChatSidebar collapsing', () => {
     setup({ isCollapsed: false, isOpen: true })
 
     expect(screen.getByRole('complementary')).not.toHaveAttribute('inert')
+  })
+
+  describe('optimistic edits', () => {
+    const research = { id: 'p1', name: 'Research', chatCount: 1, updatedAt: '' }
+    const projectChat = { id: 'c', title: 'Vector DBs', projectId: 'p1', messageCount: 0, tokenCount: 0, updatedAt: '' }
+
+    // React groups in-flight async transitions and only drops optimistic state
+    // once all of them finish, so a request one test leaves hanging would hold
+    // the next test's rows too. Settle every one before moving on.
+    const inFlight: Array<() => void> = []
+    afterEach(async () => {
+      await act(async () => inFlight.splice(0).forEach((resolve) => resolve()))
+    })
+
+    /** A request that stays in flight until the test settles it. Like the
+     *  stores, it resolves either way and the props say what the server kept. */
+    const pendingRequest = () => {
+      let resolveRequest = () => {}
+      const request = vi.fn(
+        () => new Promise<void>((resolve) => {
+          resolveRequest = resolve
+          inFlight.push(resolve)
+        }),
+      )
+      // The action finishes a turn after the request does, so React needs a second
+      // act to drop the optimistic copy.
+      const settle = async (_outcome: 'fail') => {
+        await act(async () => resolveRequest())
+        await act(async () => {})
+      }
+      return { request, settle }
+    }
+
+    it('removes a chat the moment the delete is confirmed, before the server answers', async () => {
+      const { request } = pendingRequest()
+      const { user } = setup({ isOpen: true, onDelete: request })
+
+      await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+      expect(request).toHaveBeenCalledExactlyOnceWith('a')
+      expect(screen.queryByText('First chat')).not.toBeInTheDocument()
+    })
+
+    // The store keeps the chat when the delete fails, so the row has to come back.
+    it('puts the chat back when the server keeps it', async () => {
+      const { request, settle } = pendingRequest()
+      const { user } = setup({ isOpen: true, onDelete: request })
+
+      await user.click(screen.getByRole('button', { name: 'Delete "First chat"' }))
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      // The store swallows the failure and keeps its list, so the request simply settles.
+      await settle('fail')
+
+      expect(screen.getByText('First chat')).toBeInTheDocument()
+    })
+
+    it('hides a deleted project and its chats at once', async () => {
+      const { request } = pendingRequest()
+      const { user } = setup({ isOpen: true, projects: [research], chats: [projectChat], onDeleteProject: request })
+
+      await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
+      await user.click(screen.getByRole('button', { name: 'Delete project and chats' }))
+
+      expect(request).toHaveBeenCalledExactlyOnceWith('p1')
+      expect(screen.queryByText('Research')).not.toBeInTheDocument()
+      expect(screen.queryByText('Vector DBs')).not.toBeInTheDocument()
+    })
+
+    it('shows a new project name at once, and the old one again if the rename fails', async () => {
+      const { request, settle } = pendingRequest()
+      const { user } = setup({ isOpen: true, projects: [research], onRenameProject: request })
+
+      await user.click(screen.getByRole('button', { name: 'Rename project "Research"' }))
+      const nameField = screen.getByRole('textbox', { name: 'Project name' })
+      await user.clear(nameField)
+      await user.type(nameField, 'Deep research{Enter}')
+
+      expect(request).toHaveBeenCalledExactlyOnceWith('p1', 'Deep research')
+      expect(screen.getByText('Deep research')).toBeInTheDocument()
+
+      await settle('fail')
+
+      expect(screen.getByText('Research')).toBeInTheDocument()
+    })
   })
 })
