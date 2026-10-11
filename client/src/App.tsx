@@ -6,6 +6,7 @@ import SignInPage from './pages/signin'
 import { useAuthStore } from './hooks/useAuthStore'
 import { useChatStore } from './hooks/useChatStore'
 import { useProjectStore } from './hooks/useProjectStore'
+import { useUploadStore } from './hooks/useUploadStore'
 
 export default function App() {
   const status = useAuthStore((state) => state.status)
@@ -22,6 +23,7 @@ export default function App() {
     if (status === 'signedOut') {
       useChatStore.getState().reset()
       useProjectStore.getState().reset()
+      useUploadStore.getState().reset()
     }
   }, [status])
 

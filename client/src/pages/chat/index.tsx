@@ -4,15 +4,19 @@ import Composer from '../../components/composser'
 import Message from '../../components/message'
 import SaveChatNudge from '../../components/save-chat-nudge/SaveChatNudge'
 import ChatSidebar from '../../components/sidebar/ChatSidebar'
+import FileMessage from '../../components/message/FileMessage'
 import { useAuthStore } from '../../hooks/useAuthStore'
 import { useChatStore } from '../../hooks/useChatStore'
 import { useProjectStore } from '../../hooks/useProjectStore'
 import { useScrollAnchor } from '../../hooks/useScrollAnchor'
+import { useUploadStore } from '../../hooks/useUploadStore'
 import { MAX_CHAT_TOKENS } from '../../lib/limits'
 import type { ToolActivity } from '../../api/streamChat'
+import type { UploadSummary } from '../../api/uploads'
 
 /** Stable identity, so a non-streaming turn doesn't re-render on every keystroke. */
 const NO_TOOLS: ToolActivity[] = []
+const NO_UPLOADS: UploadSummary[] = []
 
 const COLLAPSE_KEY = 'sidebar-collapsed'
 
@@ -36,6 +40,9 @@ export default function ChatPage() {
     const chatId = useChatStore((state) => state.chatId)
     const chats = useChatStore((state) => state.chats)
     const sendMessage = useChatStore((state) => state.sendMessage)
+    const attachFile = useChatStore((state) => state.attachFile)
+    const chatUploads = useUploadStore((state) => (chatId ? state.uploadsByChat[chatId] : undefined) ?? NO_UPLOADS)
+    const loadUploads = useUploadStore((state) => state.loadUploads)
     const editMessage = useChatStore((state) => state.editMessage)
     const navigateEdit = useChatStore((state) => state.navigateEdit)
     const stopStreaming = useChatStore((state) => state.stopStreaming)
@@ -72,13 +79,14 @@ export default function ChatPage() {
 
     // Grows as a reply streams, not only when a turn is added. A message count
     // alone never changes mid-stream, so the answer scrolls out of view.
-    const contentLength = turns.reduce(
-        (total, turn) =>
+    const contentLength = turns.reduce((total, turn) => {
+        if (turn.kind === 'file') return total + 1
+        return (
             total +
             (turn.edits[turn.activeEditIndex]?.length ?? 0) +
-            (turn.responses[turn.activeEditIndex]?.length ?? 0),
-        0,
-    )
+            (turn.responses[turn.activeEditIndex]?.length ?? 0)
+        )
+    }, 0)
     const { viewportRef, isPinned, scrollToBottom } = useScrollAnchor(contentLength)
 
     // Nothing to load until there is an account. A visitor who has never sent
@@ -92,6 +100,11 @@ export default function ChatPage() {
         if (!user) return
         loadProjects()
     }, [user, loadProjects])
+
+    // The file cards need their status, which lives with the uploads, not the messages.
+    useEffect(() => {
+        if (chatId) loadUploads(chatId)
+    }, [chatId, loadUploads])
 
     const activeChat = chats.find((chat) => chat.id === chatId)
     const isChatFull = (activeChat?.tokenCount ?? 0) >= MAX_CHAT_TOKENS
@@ -190,6 +203,7 @@ export default function ChatPage() {
                                     isStreaming={isStreaming}
                                     onStop={stopStreaming}
                                     tokenCount={activeChat?.tokenCount}
+                                    onAttachFile={attachFile}
                                     autoFocus
                                 />
                             )}
@@ -205,6 +219,11 @@ export default function ChatPage() {
                         >
                             <div className="mx-auto w-full max-w-3xl">
                                 {turns.map((turn) => {
+                                    if (turn.kind === 'file') {
+                                        const upload = chatUploads.find((entry) => entry.id === turn.uploadId)
+                                        return <FileMessage key={turn.id} name={turn.name} upload={upload} />
+                                    }
+
                                     const content = turn.edits[turn.activeEditIndex]
                                     const response = turn.responses[turn.activeEditIndex]
                                     const isTurnStreaming = turn.id === streamingTurnId
@@ -278,6 +297,7 @@ export default function ChatPage() {
                                         isStreaming={isStreaming}
                                         onStop={stopStreaming}
                                         tokenCount={activeChat?.tokenCount}
+                                        onAttachFile={attachFile}
                                     />
                                 )}
                             </div>

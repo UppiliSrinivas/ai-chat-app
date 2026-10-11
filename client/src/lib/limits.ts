@@ -4,3 +4,4 @@
  */
 export const MAX_CHAT_TOKENS = 20_000
 export const MAX_CHATS_PER_PROJECT = 5
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024

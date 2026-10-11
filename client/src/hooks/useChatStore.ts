@@ -1,15 +1,29 @@
 import { create } from 'zustand'
 import { streamChat, type ToolActivity } from '../api/streamChat'
 import { createChat, deleteChat as deleteChatRequest, getChat, listChats, type ChatMessage, type ChatSummary } from '../api/chats'
+import { uploadFile } from '../api/uploads'
+import { checkFileSize } from '../lib/uploadMessages'
 import { useAuthStore } from './useAuthStore'
 import { useProjectStore } from './useProjectStore'
+import { useUploadStore } from './useUploadStore'
 
-export type Turn = {
+export type TextTurn = {
+  kind: 'text'
   id: string
   edits: string[]
   responses: string[]
   activeEditIndex: number
 }
+
+/** A file the user attached. It has no reply of its own; the next question does. */
+export type FileTurn = {
+  kind: 'file'
+  id: string
+  uploadId: string
+  name: string
+}
+
+export type Turn = TextTurn | FileTurn
 
 export const MAX_EDITS_PER_MESSAGE = 5
 
@@ -19,10 +33,12 @@ export const MAX_EDITS_PER_MESSAGE = 5
 function messagesToTurns(messages: ChatMessage[]): Turn[] {
   const turns: Turn[] = []
   for (const message of messages) {
-    if (message.role === 'user') {
-      turns.push({ id: crypto.randomUUID(), edits: [message.content], responses: [''], activeEditIndex: 0 })
-    } else if (turns.length > 0) {
-      const lastTurn = turns[turns.length - 1]
+    const lastTurn = turns.at(-1)
+    if (message.kind === 'file') {
+      turns.push({ kind: 'file', id: crypto.randomUUID(), uploadId: message.uploadId, name: message.name })
+    } else if (message.role === 'user') {
+      turns.push({ kind: 'text', id: crypto.randomUUID(), edits: [message.content], responses: [''], activeEditIndex: 0 })
+    } else if (lastTurn?.kind === 'text') {
       lastTurn.responses[lastTurn.activeEditIndex] = message.content
     }
   }
@@ -43,6 +59,7 @@ type ChatState = {
   // The project the next created chat belongs to, or null for a loose chat.
   pendingProjectId: string | null
   sendMessage: (content: string) => Promise<void>
+  attachFile: (file: File) => Promise<void>
   editMessage: (turnId: string, newContent: string) => Promise<void>
   navigateEdit: (turnId: string, direction: 'prev' | 'next') => void
   stopStreaming: () => void
@@ -101,7 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         onDelta: (delta) => {
           set((state) => ({
             turns: state.turns.map((turn) => {
-              if (turn.id !== turnId) return turn
+              if (turn.id !== turnId || turn.kind !== 'text') return turn
               const responses = [...turn.responses]
               responses[turn.activeEditIndex] = (responses[turn.activeEditIndex] ?? '') + delta
               return { ...turn, responses }
@@ -135,9 +152,37 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     sendMessage: async (content) => {
       if (get().isStreaming) return
-      const turn: Turn = { id: crypto.randomUUID(), edits: [content], responses: [''], activeEditIndex: 0 }
+      const turn: Turn = { kind: 'text', id: crypto.randomUUID(), edits: [content], responses: [''], activeEditIndex: 0 }
       set((state) => ({ turns: [...state.turns, turn] }))
       await runStream(turn.id, content)
+    },
+
+    // A file is a message: it creates the chat if needed, then lands in the
+    // transcript as soon as the server accepts it, while ingestion carries on.
+    attachFile: async (file) => {
+      if (get().isStreaming) return
+      const sizeError = checkFileSize(file)
+      if (sizeError) {
+        set({ error: sizeError })
+        return
+      }
+
+      try {
+        const chatId = await ensureChatId()
+        const upload = await uploadFile(chatId, file)
+        useUploadStore.getState().trackUpload(chatId, upload)
+
+        // The user may have switched chats while the upload was in flight.
+        if (get().chatId === chatId) {
+          const turn: FileTurn = { kind: 'file', id: crypto.randomUUID(), uploadId: upload.id, name: upload.name }
+          set((state) => ({ turns: [...state.turns, turn], error: null }))
+        }
+      } catch (err) {
+        set({ error: err instanceof Error ? err.message : 'Could not attach that file' })
+      } finally {
+        // A chat opened with a file is titled after it, and moves to the top.
+        get().loadChats()
+      }
     },
 
     // NOTE: the server now owns chat history and simply appends whatever it
@@ -151,15 +196,15 @@ export const useChatStore = create<ChatState>((set, get) => {
     editMessage: async (turnId, newContent) => {
       if (get().isStreaming) return
       const turns = get().turns
-      const turnIndex = turns.findIndex((turn) => turn.id === turnId)
-      if (turnIndex === -1) return
-      if (turns[turnIndex].edits.length > MAX_EDITS_PER_MESSAGE) return
+      const editedTurn = turns.find((turn) => turn.id === turnId)
+      if (editedTurn?.kind !== 'text') return
+      if (editedTurn.edits.length > MAX_EDITS_PER_MESSAGE) return
 
-      const newEditIndex = turns[turnIndex].edits.length
+      const newEditIndex = editedTurn.edits.length
 
       set((state) => ({
         turns: state.turns.map((turn) =>
-          turn.id === turnId
+          turn.id === turnId && turn.kind === 'text'
             ? {
                 ...turn,
                 edits: [...turn.edits, newContent],
@@ -175,7 +220,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     navigateEdit: (turnId, direction) => {
       set((state) => ({
         turns: state.turns.map((turn) => {
-          if (turn.id !== turnId) return turn
+          if (turn.id !== turnId || turn.kind !== 'text') return turn
           const nextIndex = direction === 'prev' ? turn.activeEditIndex - 1 : turn.activeEditIndex + 1
           const clampedIndex = Math.max(0, Math.min(turn.edits.length - 1, nextIndex))
           return { ...turn, activeEditIndex: clampedIndex }

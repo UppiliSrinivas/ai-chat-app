@@ -109,3 +109,34 @@ describe('Composer token count', () => {
     expect(screen.getByText('AI-Chat-App can make mistakes')).toBeInTheDocument()
   })
 })
+
+describe('Composer attach file', () => {
+  it('hides the attach button when attaching is not offered', () => {
+    render(<Composer onSend={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Attach file' })).not.toBeInTheDocument()
+  })
+
+  it('hands a chosen file to the caller', async () => {
+    const onAttachFile = vi.fn()
+    render(<Composer onSend={vi.fn()} onAttachFile={onAttachFile} />)
+    const file = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
+
+    await userEvent.setup().upload(screen.getByLabelText('Choose a file to attach'), file)
+
+    expect(onAttachFile).toHaveBeenCalledExactlyOnceWith(file)
+  })
+
+  it('only offers the file types the server can read', () => {
+    render(<Composer onSend={vi.fn()} onAttachFile={vi.fn()} />)
+
+    expect(screen.getByLabelText('Choose a file to attach')).toHaveAttribute('accept', '.pdf,.txt,.md,.markdown')
+  })
+
+  // A file is a message, so it waits for the reply like any other.
+  it('disables attaching while a reply is streaming', () => {
+    render(<Composer onSend={vi.fn()} onAttachFile={vi.fn()} isStreaming />)
+
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeDisabled()
+  })
+})
