@@ -4,7 +4,7 @@
  * the call. This stands in where no real count exists yet.
  */
 
-const CHARS_PER_TOKEN = 4;
+export const CHARS_PER_TOKEN = 4;
 
 export const estimateTokens = (text: string): number =>
   text.length === 0 ? 0 : Math.ceil(text.length / CHARS_PER_TOKEN);

@@ -3,10 +3,14 @@ import {
   MAX_ACTIVE_TOKENS,
   MAX_CHATS_PER_PROJECT,
   MAX_CHAT_TOKENS,
+  MAX_CHUNKS_PER_UPLOAD,
   MAX_PROJECTS_PER_DAY,
+  MAX_UPLOADS_PER_CHAT,
+  hasTooManyChunks,
   isChatFull,
   isDailyProjectLimitReached,
   isProjectFull,
+  isChatUploadsFull,
   isSummaryDue,
   startOfUtcDay,
 } from "./limits.js";
@@ -99,5 +103,17 @@ describe("startOfUtcDay", () => {
   // Late-evening UTC still belongs to the day it is in, not the next one.
   it("does not roll into tomorrow late in the day", () => {
     expect(startOfUtcDay(new Date("2026-09-01T23:59:59.999Z")).toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+});
+
+describe("upload limits", () => {
+  it("fills a chat at exactly the upload cap", () => {
+    expect(isChatUploadsFull(MAX_UPLOADS_PER_CHAT - 1)).toBe(false);
+    expect(isChatUploadsFull(MAX_UPLOADS_PER_CHAT)).toBe(true);
+  });
+
+  it("allows exactly the chunk cap, refuses one more", () => {
+    expect(hasTooManyChunks(MAX_CHUNKS_PER_UPLOAD)).toBe(false);
+    expect(hasTooManyChunks(MAX_CHUNKS_PER_UPLOAD + 1)).toBe(true);
   });
 });

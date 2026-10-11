@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "db:vector-index": "tsx src/scripts/create-vector-index.ts"
   },
   "keywords": [],
   "author": "",
@@ -27,7 +28,9 @@
     "express-rate-limit": "^8.6.2",
     "google-auth-library": "^11.0.2",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.9.1"
+    "mongoose": "^9.9.1",
+    "multer": "^2.4.0",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -35,11 +38,12 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.3.0",
     "@types/node": "^26.1.2",
     "@vitest/coverage-v8": "^4.1.10",
+    "oxlint": "^1.75.0",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
-    "oxlint": "^1.75.0"
+    "vitest": "^4.1.10"
   }
 }
