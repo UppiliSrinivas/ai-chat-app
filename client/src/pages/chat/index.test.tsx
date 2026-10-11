@@ -467,4 +467,21 @@ describe('ChatPage', () => {
 
     expect(loadUploads).toHaveBeenCalledExactlyOnceWith('c1')
   })
+
+  it('names the open chat in the browser tab', () => {
+    useChatStore.setState({
+      chatId: 'c1',
+      chats: [{ id: 'c1', title: 'Trip plan', projectId: null, messageCount: 2, tokenCount: 10, updatedAt: '' }],
+    })
+
+    render(<ChatPage />)
+
+    expect(document.title).toBe('Trip plan · AI-Chat-App')
+  })
+
+  it('shows the app name in the tab when no chat is open', () => {
+    render(<ChatPage />)
+
+    expect(document.title).toBe('AI-Chat-App')
+  })
 })

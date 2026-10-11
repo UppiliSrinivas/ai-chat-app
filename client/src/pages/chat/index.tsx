@@ -19,6 +19,7 @@ const NO_TOOLS: ToolActivity[] = []
 const NO_UPLOADS: UploadSummary[] = []
 
 const COLLAPSE_KEY = 'sidebar-collapsed'
+const APP_NAME = 'AI-Chat-App'
 
 /** Remembered per browser so the layout survives a reload. A blocked or empty
  *  store just means the sidebar starts open. */
@@ -108,6 +109,7 @@ export default function ChatPage() {
 
     const activeChat = chats.find((chat) => chat.id === chatId)
     const isChatFull = (activeChat?.tokenCount ?? 0) >= MAX_CHAT_TOKENS
+    const tabTitle = activeChat ? `${activeChat.title} · ${APP_NAME}` : APP_NAME
     const isGuest = user === null || user.isAnonymous
     const isNudgeVisible = shouldShowSaveNudge({
         turnCount: turns.length,
@@ -126,6 +128,8 @@ export default function ChatPage() {
 
     return (
         <div className="flex h-dvh w-full bg-ground">
+            {/* React 19 hoists this into <head>, so the tab names the open chat. */}
+            <title>{tabTitle}</title>
             <ChatSidebar
                 chats={chats}
                 activeChatId={chatId}
