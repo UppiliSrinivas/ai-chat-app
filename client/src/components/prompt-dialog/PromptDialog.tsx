@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export type PromptDialogProps = {
@@ -38,16 +38,18 @@ export default function PromptDialog({
     inputRef.current?.select()
   }, [isOpen, initialValue])
 
+  // Same as ConfirmDialog: a fresh onCancel per render must not re-subscribe.
+  const cancelOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') onCancel()
+  })
+
   useEffect(() => {
     if (!isOpen) return
 
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel()
-    }
-
+    const handleKey = (event: KeyboardEvent) => cancelOnEscape(event)
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isOpen, onCancel])
+  }, [isOpen])
 
   if (!isOpen) return null
 
