@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AssistantMessage, { type AssistantMessageProps } from './AssistantMessage'
@@ -8,6 +8,12 @@ const setup = (props: Partial<AssistantMessageProps> = {}) => {
   const view = render(<AssistantMessage content="The answer" {...handlers} {...props} />)
   return { ...handlers, ...view, user: userEvent.setup() }
 }
+
+// The renderer is lazy-loaded; importing it once here means the component's own
+// import finds it cached, instead of racing a cold load in a busy test run.
+beforeAll(async () => {
+  await import('./MarkdownContent')
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
