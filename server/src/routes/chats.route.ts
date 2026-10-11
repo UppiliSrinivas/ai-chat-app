@@ -2,7 +2,9 @@ import { Router } from "express";
 import { Types } from "mongoose";
 import { MAX_CHATS_PER_PROJECT, isProjectFull } from "../lib/limits/limits.js";
 import { Chat, isValidObjectId } from "../models/Chat.js";
+import { Chunk } from "../models/Chunk.js";
 import { Project } from "../models/Project.js";
+import { Upload } from "../models/Upload.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
@@ -118,7 +120,12 @@ router.get("/:id", async (req, res) => {
     messageCount: chat.messages.length,
     tokenCount: chat.tokenCount ?? 0,
     updatedAt: chat.updatedAt,
-    messages: chat.messages.map((message) => ({ role: message.role, content: message.content })),
+    messages: chat.messages.map((message) => ({
+      role: message.role,
+      kind: message.kind ?? "text",
+      content: message.content,
+      uploadId: message.uploadId ? String(message.uploadId) : null,
+    })),
   });
 });
 
@@ -154,11 +161,16 @@ router.delete("/:id", async (req, res) => {
     return;
   }
 
-  const chat = await Chat.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+  const chat = await Chat.findOne({ _id: req.params.id, userId: req.userId });
   if (!chat) {
     res.status(404).json({ message: "Chat not found." });
     return;
   }
+
+  // Chunks, then uploads, then the chat: the reverse would strand vectors nothing can find again.
+  await Chunk.deleteMany({ userId: req.userId, chatId: chat._id });
+  await Upload.deleteMany({ userId: req.userId, chatId: chat._id });
+  await Chat.deleteOne({ _id: chat._id, userId: req.userId });
 
   res.status(204).end();
 });

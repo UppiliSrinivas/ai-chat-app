@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { Types } from "mongoose";
 import { Chat, isValidObjectId } from "../models/Chat.js";
+import { Chunk } from "../models/Chunk.js";
 import { Project } from "../models/Project.js";
+import { Upload } from "../models/Upload.js";
 import {
   MAX_PROJECTS_PER_DAY,
   isDailyProjectLimitReached,
@@ -111,6 +113,10 @@ router.delete("/:id", async (req, res) => {
   // projectId nothing can resolve, and no retry could find them again.
   // Both filters stay scoped by userId so a later refactor that moves either
   // line can't turn into a cross-tenant delete.
+  // Files hang off the chats, so they go before the chats: chunks, then uploads.
+  const chatIds = await Chat.find({ userId: req.userId, projectId: project.id }).distinct("_id");
+  await Chunk.deleteMany({ userId: req.userId, chatId: { $in: chatIds } });
+  await Upload.deleteMany({ userId: req.userId, chatId: { $in: chatIds } });
   await Chat.deleteMany({ userId: req.userId, projectId: project.id });
   await Project.deleteOne({ _id: project.id, userId: req.userId });
 

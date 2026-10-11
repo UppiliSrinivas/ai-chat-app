@@ -46,3 +46,13 @@ export const catalogueLimiter = rateLimit({
   legacyHeaders: false,
   message: tooMany,
 });
+
+/** Each upload spends embedding quota and storage, so it's tighter than chat. */
+export const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: chatKey,
+  message: tooMany,
+});

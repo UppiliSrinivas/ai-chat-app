@@ -8,6 +8,7 @@ import authRoutes from "./routes/auth.route.js";
 import chatsRoutes from "./routes/chats.route.js";
 import projectsRoutes from "./routes/projects.route.js";
 import modelsRoutes from "./routes/models.route.js";
+import uploadsRoutes from "./routes/uploads.route.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 /**
@@ -50,6 +51,7 @@ app.use("/auth", authRoutes);
 app.use("/projects", projectsRoutes);
 app.use("/chats", chatsRoutes);
 app.use("/models", modelsRoutes);
+app.use("/uploads", uploadsRoutes);
 app.use("/gemini/chat", geminiChatRoutes);
 
 app.use(notFound);
