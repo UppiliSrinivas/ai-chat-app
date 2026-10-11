@@ -17,6 +17,8 @@ export default defineConfig({
         "src/index.ts",
         "src/app.ts",
         "src/config/db.ts",
+        // One-off admin scripts that need a live Atlas cluster.
+        "src/scripts/**",
         "src/routes/**",
       ],
       thresholds: {
