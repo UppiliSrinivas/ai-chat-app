@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toFunctionResponseParts, toGeminiContents, toGeminiTools } from "./history.js";
+import { toAttachmentNote, toFunctionResponseParts, toGeminiContents, toGeminiTools } from "./history.js";
 import type { ChatRequest } from "../chat-request/chat-request.js";
 
 describe("toGeminiContents", () => {
@@ -78,5 +78,35 @@ describe("toFunctionResponseParts", () => {
     ]);
 
     expect(parts).toHaveLength(2);
+  });
+});
+
+describe("file messages in history", () => {
+  it("reads a file to the model as a note naming it", () => {
+    expect(toAttachmentNote("notes.pdf")).toBe("[Attached file: notes.pdf]");
+  });
+
+  // Attaching a file then asking about it makes two user turns in a row.
+  it("merges consecutive user turns into one turn with both parts", () => {
+    const contents = toGeminiContents({
+      message: "Summarize it",
+      history: [{ role: "user", content: toAttachmentNote("notes.pdf") }],
+    });
+
+    expect(contents).toEqual([
+      { role: "user", parts: [{ text: "[Attached file: notes.pdf]" }, { text: "Summarize it" }] },
+    ]);
+  });
+
+  it("leaves alternating turns as they are", () => {
+    const contents = toGeminiContents({
+      message: "And then?",
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello" },
+      ],
+    });
+
+    expect(contents.map((content) => content.role)).toEqual(["user", "model", "user"]);
   });
 });

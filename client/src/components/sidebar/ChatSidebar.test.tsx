@@ -263,7 +263,16 @@ describe('ChatSidebar', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
 
-    expect(screen.getByText(/its 1 chat\./)).toBeInTheDocument()
+    expect(screen.getByText(/its 1 chat and/)).toBeInTheDocument()
+  })
+
+  // Files go with the project too, and they're what chats were answering from.
+  it('warns that deleting a project deletes its files', async () => {
+    const { user } = setup({ isOpen: true, projects: [project] })
+
+    await user.click(screen.getByRole('button', { name: 'Delete project "Research"' }))
+
+    expect(screen.getByText(/and its files/)).toBeInTheDocument()
   })
 
   // A failed project create or delete used to leave no trace on screen at all.

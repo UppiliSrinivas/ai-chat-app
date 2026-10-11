@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import { describe, expect, it } from "vitest";
-import { authLimiter, chatKey, chatLimiter } from "./rateLimit.js";
+import { authLimiter, catalogueLimiter, chatKey, chatLimiter, uploadLimiter } from "./rateLimit.js";
 
 describe("chatKey", () => {
   // Keyed on the user, not the IP, so an office or NAT doesn't share a budget.
@@ -34,5 +34,12 @@ describe("limiters", () => {
   it("exports middleware for both throttled surfaces", () => {
     expect(typeof authLimiter).toBe("function");
     expect(typeof chatLimiter).toBe("function");
+    expect(typeof uploadLimiter).toBe("function");
+  });
+});
+
+describe("catalogueLimiter", () => {
+  it("is mounted as middleware", () => {
+    expect(typeof catalogueLimiter).toBe("function");
   });
 });

@@ -40,3 +40,17 @@ export const startOfUtcDay = (now: Date): Date =>
 /** Tool rounds inside one reply. Each round is another model call, so this
  *  bounds both the cost and how long a stream stays open. */
 export const MAX_TOOL_STEPS = 5;
+
+/** Under Vercel's 4.5MB request cap, which the /api rewrite may also enforce. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+export const MAX_UPLOADS_PER_CHAT = 10;
+
+/** ~300k tokens of text at 600 tokens a chunk; larger files are rejected, not truncated. */
+export const MAX_CHUNKS_PER_UPLOAD = 500;
+
+export const isChatUploadsFull = (uploadCount: number): boolean =>
+  uploadCount >= MAX_UPLOADS_PER_CHAT;
+
+export const hasTooManyChunks = (chunkCount: number): boolean =>
+  chunkCount > MAX_CHUNKS_PER_UPLOAD;

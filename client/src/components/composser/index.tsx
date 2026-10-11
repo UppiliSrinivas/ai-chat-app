@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
-import { ArrowUp, Square } from 'lucide-react'
+import type { ChangeEvent, KeyboardEvent } from 'react'
+import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import { formatTokens } from '../../lib/formatTokens'
+import { ACCEPTED_FILE_TYPES } from '../../lib/uploadMessages'
 
 type ComposerProps = {
   onSend: (message: string) => void | Promise<void>
@@ -12,6 +13,8 @@ type ComposerProps = {
   autoFocus?: boolean
   /** Tokens stored in this chat so far. Omitted on a chat with no messages. */
   tokenCount?: number
+  /** Attaches a file to this chat. Omitted, the attach button is hidden. */
+  onAttachFile?: (file: File) => void
 }
 
 const MAX_TEXTAREA_HEIGHT_PX = 200
@@ -29,9 +32,11 @@ export default function Composer({
   placeholder = 'Ask...',
   autoFocus = false,
   tokenCount = 0,
+  onAttachFile,
 }: ComposerProps) {
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // A fresh chat has nothing to count, and "0 tokens" reads as broken.
   const usageLabel = tokenCount > 0 ? `${formatTokens(tokenCount)} tokens` : ''
@@ -55,6 +60,13 @@ export default function Composer({
     }
     event.preventDefault()
     sendDraft()
+  }
+
+  const handleFileChosen = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // Cleared so choosing the same file again still fires a change.
+    event.target.value = ''
+    if (file) onAttachFile?.(file)
   }
 
   const handleActionClick = () => {
@@ -87,7 +99,31 @@ export default function Composer({
         />
 
         <div className="flex items-center justify-between gap-3">
-          <span className="px-1 text-xs text-zinc-400/70 tabular-nums">{usageLabel}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            {onAttachFile && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_FILE_TYPES}
+                  onChange={handleFileChosen}
+                  className="hidden"
+                  aria-label="Choose a file to attach"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled || isStreaming}
+                  aria-label="Attach file"
+                  title="Attach a PDF, .txt or .md file (up to 4 MB)"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800/60 hover:text-zinc-100 disabled:opacity-30"
+                >
+                  <Paperclip size={16} />
+                </button>
+              </>
+            )}
+            <span className="px-1 text-xs text-zinc-400/70 tabular-nums">{usageLabel}</span>
+          </div>
 
           <button
             type="button"

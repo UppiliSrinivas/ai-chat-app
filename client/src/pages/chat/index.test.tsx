@@ -5,8 +5,23 @@ import userEvent from '@testing-library/user-event'
 // The children are covered by their own suites; stubbing them keeps this
 // focused on the wiring the page itself owns.
 vi.mock('../../components/composser', () => ({
-  default: ({ onSend, isStreaming, onStop }: { onSend: (text: string) => void; isStreaming: boolean; onStop: () => void }) => (
+  default: ({
+    onSend,
+    isStreaming,
+    onStop,
+    onAttachFile,
+  }: {
+    onSend: (text: string) => void
+    isStreaming: boolean
+    onStop: () => void
+    onAttachFile?: (file: File) => void
+  }) => (
     <div>
+      {onAttachFile && (
+        <button type="button" onClick={() => onAttachFile(new File(['x'], 'cv.pdf'))}>
+          composer attach
+        </button>
+      )}
       <button type="button" onClick={() => onSend('hello')}>
         send
       </button>
@@ -64,20 +79,29 @@ vi.mock('../../components/sidebar/ChatSidebar', () => ({
   ),
 }))
 
+vi.mock('../../components/message/FileMessage', () => ({
+  default: ({ name, upload }: { name: string; upload?: { status: string } }) => (
+    <div>{`file ${name} ${upload?.status ?? 'unknown'}`}</div>
+  ),
+}))
+
 const { useAuthStore } = await import('../../hooks/useAuthStore')
 const { useChatStore } = await import('../../hooks/useChatStore')
 const { useProjectStore } = await import('../../hooks/useProjectStore')
+const { useUploadStore } = await import('../../hooks/useUploadStore')
 const { default: ChatPage } = await import('./index')
 const { MAX_CHAT_TOKENS } = await import('../../lib/limits')
 
 const initialAuth = useAuthStore.getState()
 const initialChat = useChatStore.getState()
 const initialProject = useProjectStore.getState()
+const initialUpload = useUploadStore.getState()
 
 const guestUser = { id: 'u1', email: null, isAnonymous: true }
 const memberUser = { id: 'u2', email: 'person@example.com', isAnonymous: false }
 
 const turn = (id: string, prompt: string, reply: string) => ({
+  kind: 'text' as const,
   id,
   edits: [prompt],
   activeEditIndex: 0,
@@ -88,6 +112,7 @@ beforeEach(() => {
   useAuthStore.setState({ ...initialAuth }, true)
   useChatStore.setState({ ...initialChat, loadChats: vi.fn() }, true)
   useProjectStore.setState({ ...initialProject, loadProjects: vi.fn() }, true)
+  useUploadStore.setState({ ...initialUpload, loadUploads: vi.fn() }, true)
 })
 
 describe('ChatPage', () => {
@@ -404,5 +429,42 @@ describe('ChatPage', () => {
     await user.click(screen.getByRole('button', { name: 'Start a new chat' }))
 
     expect(startNewChat).toHaveBeenCalledOnce()
+  })
+
+  it('lets the composer attach a file through the store', async () => {
+    const attachFile = vi.fn()
+    useChatStore.setState({ attachFile })
+    const user = userEvent.setup()
+    render(<ChatPage />)
+
+    await user.click(screen.getByRole('button', { name: 'composer attach' }))
+
+    expect(attachFile).toHaveBeenCalledOnce()
+  })
+
+  it('shows a file turn as a card with its upload status', () => {
+    useChatStore.setState({
+      chatId: 'c1',
+      turns: [{ kind: 'file', id: 'f1', uploadId: 'u1', name: 'cv.pdf' }],
+    })
+    useUploadStore.setState({
+      uploadsByChat: { c1: [{ id: 'u1', name: 'cv.pdf', sizeBytes: 1024, createdAt: '', status: 'ready', chunkCount: 2 }] },
+      loadUploads: vi.fn(),
+    })
+
+    render(<ChatPage />)
+
+    expect(screen.getByText('file cv.pdf ready')).toBeInTheDocument()
+  })
+
+  // Statuses live with the uploads, so opening a chat has to fetch them.
+  it("loads the open chat's uploads", () => {
+    const loadUploads = vi.fn()
+    useUploadStore.setState({ loadUploads })
+    useChatStore.setState({ chatId: 'c1', turns: [turn('t1', 'hi', 'hello')] })
+
+    render(<ChatPage />)
+
+    expect(loadUploads).toHaveBeenCalledExactlyOnceWith('c1')
   })
 })

@@ -36,3 +36,23 @@ export const chatLimiter = rateLimit({
   keyGenerator: chatKey,
   message: tooMany,
 });
+
+/** Public and unauthenticated, and a cold cache reaches out to Google, so it
+ *  is keyed on IP rather than a user that may not exist yet. */
+export const catalogueLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: tooMany,
+});
+
+/** Each upload spends embedding quota and storage, so it's tighter than chat. */
+export const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: chatKey,
+  message: tooMany,
+});

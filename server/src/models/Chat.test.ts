@@ -175,3 +175,44 @@ describe("Chat token accounting", () => {
     expect(new Chat(doc).validateSync()).toBeDefined();
   });
 });
+
+describe("file messages", () => {
+  const uploadId = new Types.ObjectId();
+
+  it("keeps a plain message as text", () => {
+    const chat = new Chat({ userId, messages: [{ role: "user", content: "hi" }] });
+
+    expect(chat.messages[0].kind).toBe("text");
+  });
+
+  it("accepts a user file message that points at its upload", () => {
+    const chat = new Chat({
+      userId,
+      messages: [{ role: "user", kind: "file", uploadId, content: "notes.pdf" }],
+    });
+
+    expect(chat.validateSync()).toBeUndefined();
+  });
+
+  // A file card with nothing behind it can never show a status.
+  it("refuses a file message with no upload", () => {
+    const chat = new Chat({ userId, messages: [{ role: "user", kind: "file", content: "notes.pdf" }] });
+
+    expect(chat.validateSync()?.errors["messages.0.uploadId"]).toBeDefined();
+  });
+
+  it("refuses a file message from the assistant", () => {
+    const chat = new Chat({
+      userId,
+      messages: [{ role: "assistant", kind: "file", uploadId, content: "notes.pdf" }],
+    });
+
+    expect(chat.validateSync()?.errors["messages.0.kind"]).toBeDefined();
+  });
+
+  it("refuses an unknown kind", () => {
+    const chat = new Chat({ userId, messages: [{ role: "user", kind: "image", content: "x" }] });
+
+    expect(chat.validateSync()?.errors["messages.0.kind"]).toBeDefined();
+  });
+});

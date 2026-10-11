@@ -11,6 +11,12 @@ import {
   searchMyChatsDeclaration,
   type SearchMyChatsArgs,
 } from "./searchMyChats.js";
+import {
+  describeSearchMyFilesCall,
+  searchMyFiles,
+  searchMyFilesDeclaration,
+  type SearchMyFilesArgs,
+} from "./searchMyFiles.js";
 
 export type ToolArgs = Record<string, unknown>;
 
@@ -18,6 +24,8 @@ export type ToolArgs = Record<string, unknown>;
  *  tool reading one person's data rather than everyone's. */
 export type ToolContext = {
   userId: string;
+  /** The chat being answered, so a file search reads only the files attached in it. */
+  chatId: string;
   signal: AbortSignal;
 };
 
@@ -43,6 +51,8 @@ const asWeatherArgs = (args: ToolArgs): GetWeatherArgs => ({ place: asText(args.
 
 const asSearchArgs = (args: ToolArgs): SearchMyChatsArgs => ({ query: asText(args.query) });
 
+const asFileSearchArgs = (args: ToolArgs): SearchMyFilesArgs => ({ query: asText(args.query) });
+
 const TOOLS: Record<string, Tool> = {
   [getWeatherDeclaration.name]: {
     declaration: getWeatherDeclaration,
@@ -54,6 +64,11 @@ const TOOLS: Record<string, Tool> = {
     describe: (args) => describeSearchMyChatsCall(asSearchArgs(args)),
     run: (args, { userId }) => searchMyChats(asSearchArgs(args), userId),
   },
+  [searchMyFilesDeclaration.name]: {
+    declaration: searchMyFilesDeclaration,
+    describe: (args) => describeSearchMyFilesCall(asFileSearchArgs(args)),
+    run: (args, { userId, chatId }) => searchMyFiles(asFileSearchArgs(args), { userId, chatId }),
+  },
 };
 
 export const findTool = (name: string | undefined): Tool | undefined => {
@@ -62,3 +77,7 @@ export const findTool = (name: string | undefined): Tool | undefined => {
 };
 
 export const toolDeclarations: ToolDeclaration[] = Object.values(TOOLS).map((tool) => tool.declaration);
+
+/** File search is withheld when there are no files: every call spends an embedding. */
+export const availableToolDeclarations = ({ hasFiles }: { hasFiles: boolean }): ToolDeclaration[] =>
+  toolDeclarations.filter((declaration) => hasFiles || declaration.name !== searchMyFilesDeclaration.name);

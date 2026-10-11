@@ -13,6 +13,7 @@ npm run dev        # tsx watch src/index.ts
 npm run build      # tsc -> dist/
 npm start          # node dist/index.js (requires build first)
 npm run typecheck  # tsc --noEmit
+npm run db:vector-index  # create the Atlas vector index on chunks; safe to re-run
 npm test           # vitest run
 npm run test:watch # vitest
 npx vitest run src/lib/chat-request/chat-request.test.ts   # a single file
@@ -68,7 +69,7 @@ Seven habits, both packages. Each one buys the same thing: the *next* change is 
 
 5. **Separate decisions from actions.** Work out *what* should happen apart from *doing* it: `lib/chat-request/` validates and windows history as a pure function, then the route streams. A decision reached inside a click handler or next to a database write can only be tested by triggering the side effect.
 
-6. **Make errors useful.** An error carries a `code` a machine can branch on next to a `message` a human can read — `CHAT_FULL` and `PROJECT_FULL` exist so the client can tell a size cap apart from the duplicate-key 409. **Known gap:** `client/src/api/client.ts` currently keeps only `message` and drops `code`, so the client can't actually make that distinction yet. Fix it when you next touch that file rather than adding a second string-matching workaround.
+6. **Make errors useful.** An error carries a `code` a machine can branch on next to a `message` a human can read — `CHAT_FULL` and `PROJECT_FULL` exist so the client can tell a size cap apart from the duplicate-key 409. `client/src/api/client.ts` throws an `ApiError` carrying both, so the client can branch on `code` instead of matching message text.
 
 7. **Keep changes focused.** One reason for a pull request, small enough that a reviewer can hold it in their head. Unrelated cleanup you spot along the way is a separate commit — bundling it is how a one-line fix turns into an afternoon of review.
 
@@ -113,7 +114,17 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - `Chat` embeds its `messages` array instead of using a separate collection — the 80-turn/120k-char window keeps documents well under Mongo's 16MB cap, and embedding avoids a join. Revisit only if cross-chat search or per-message analytics become a real need.
 - `POST /gemini/chat` now requires auth and a `chatId` (`{ chatId, message }`, not `{ message, history }`) — history loads from Mongo server-side. Chat creation is a separate `POST /chats` REST call, kept out of the SSE contract on purpose.
 - `POST /auth/google` takes the ID token from `@react-oauth/google` (browser) or `expo-auth-session` (mobile) and verifies it via `lib/google-auth/` — never decode it, an unverified decode accepts any forged payload. `audience` is the `googleAudiences` list, not one ID, because each platform's OAuth client stamps its own `aud`. Identity is keyed on Google's `sub` (`User.googleId`), not the email, since an account's address can change. A verified email matching an existing password account links the two rather than colliding with the unique email index.
-- `Project` is an optional grouping: `Chat.projectId` is nullable, so a chat with no project is standalone and no migration was needed. `DELETE /projects/:id` deletes the project and its own chats — both queries scoped by `userId`, so another project's chats are never touched.
+- `Project` is an optional grouping: `Chat.projectId` is nullable, so a chat with no project is standalone and no migration was needed. `DELETE /projects/:id` deletes the project and its own chats, along with their uploads and chunks — every query scoped by `userId`, so another project's data is never touched.
+
+### Uploads (RAG ingestion)
+
+- **A file is a chat message.** `POST /uploads` (multer, field `file`, required `chatId`) creates the `Upload`, pushes a `{ kind: "file", uploadId, content: <name> }` message onto the chat, and answers **202**; ingestion runs after the response: `lib/text-extraction/` → `lib/chunking/` → `lib/embeddings/` → `Chunk` documents. `lib/ingestion/` owns the pipeline with its DB writes passed in, so it's tested without Mongo or Gemini; it never throws, every failure becomes an `Upload.failureCode`.
+- **A chat searches only its own files.** `Upload` and `Chunk` carry `chatId`; `searchMyFiles` pre-filters on `userId` + `chatId`, and is only offered when the chat has a ready file. A chat opened with a file is titled after it.
+- `Chat.messages[].kind` is `text | file` (default `text`, so older messages needed no migration). The model sees a file message as `[Attached file: name]` via `lib/history`, which also merges consecutive same-role turns — a file followed by a question is two user turns in a row.
+- `Chunk` holds the text and a 768-dim normalized vector. The index definition lives in `models/Chunk.ts` (`dotProduct`, filters `userId`/`chatId`/`uploadId`) and `npm run db:vector-index` creates **or updates** it — rerun it whenever that definition changes.
+- Background ingestion isn't covered by the SIGTERM drain. An upload still `processing` after 10 minutes is flipped to `failed`/`INTERRUPTED` when read — not at boot, since the replacement instance boots before the cut-off upload is 10 minutes old.
+- Delete order is chunks, then uploads, then the chat, everywhere (`DELETE /chats/:id`, `/projects/:id`, `/uploads/:id`): the reverse strands vectors nothing can find again. Deleting an upload keeps its message in the chat.
+- Only `POST` is rate-limited (`uploadLimiter`); `GET` isn't, because the client polls it.
 
 ### Hardening
 
@@ -121,7 +132,7 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
 - **`trust proxy` is `1` in production, `false` otherwise.** Render terminates TLS at a proxy, so without it every client shares the proxy's IP and the limiter is useless. Never set it to `true` — that trusts a spoofable `X-Forwarded-For`, and express-rate-limit rejects it.
 - **`middleware/errorHandler.ts` is the last `app.use`.** Express 5 forwards async rejections there; without it they hit Express's default handler, which returns the stack trace whenever `NODE_ENV` isn't production. It also maps Mongo's duplicate-key (11000) to a 409, and re-throws once headers are sent so a half-written SSE stream still dies cleanly.
 - **`SIGTERM`/`SIGINT` drain in-flight requests** before exit, with a 10s backstop. Render sends `SIGTERM` on every deploy, and an open SSE stream would otherwise be severed mid-response.
-- **Size caps live in `lib/limits/`** — 20k tokens per chat, 5 chats per project, 5 new projects per user per UTC day. Enforced in the routes and returned to the client as `tokenCount`/`chatCount`. Each rejects with 409 and a `code` (`CHAT_FULL`, `PROJECT_FULL`, `PROJECT_LIMIT_REACHED`) so the client can tell them apart from the duplicate-key 409 the error handler produces. The chat cap is checked before `flushHeaders()`, since an open SSE stream can no longer carry a status.
+- **Size caps live in `lib/limits/`** — 20k tokens per chat, 5 chats per project, 5 new projects per user per UTC day; 4MB per upload (under Vercel's 4.5MB body cap), 10 uploads per chat, 500 chunks per upload. Upload caps reject with `UPLOAD_TOO_LARGE` (413), `UNSUPPORTED_FILE_TYPE` (415), `UPLOADS_FULL` (409). Enforced in the routes and returned to the client as `tokenCount`/`chatCount`. Each rejects with 409 and a `code` (`CHAT_FULL`, `PROJECT_FULL`, `PROJECT_LIMIT_REACHED`) so the client can tell them apart from the duplicate-key 409 the error handler produces. The chat cap is checked before `flushHeaders()`, since an open SSE stream can no longer carry a status.
 - **The chat cap counts tokens ever *stored*, not tokens sent.** Compaction holds the sent total near `MAX_ACTIVE_TOKENS + MAX_SUMMARY_TOKENS`, so a cap on what is sent would never be reached and a chat would never end. `Chat.tokenCount` is a running total; assistant turns are priced by the API's `candidatesTokenCount`, user turns estimated in `lib/tokens/`, since nothing can price them before they are sent.
 
 ## Current state
@@ -131,8 +142,8 @@ A client-side parser must handle multi-line `data:` fields, CRLF delimiters, and
   - Server: every `lib/` module is covered. `sse/sse.test.ts` drives `streamSSE` through a fake `Response` — it pins the disconnect-on-`res`-not-`req` behavior and the keepalive interval, both easy to regress.
   - Client: `hooks/`, `api/`, every component, `App.tsx`, and both pages. See `client/CLAUDE.md` for the Testing Library conventions.
   - Middleware and models are covered too — Mongoose validates a document without a connection, and the middleware take plain fake `req`/`res` objects, so neither needs a live database.
-  - **Untested:** the four route files (`auth.route.ts`, `chats.route.ts`, `gemini.chat.route.ts`, `projects.route.ts`). Driving them needs `supertest` to dispatch through Express, which isn't installed — they're excluded from the coverage denominator for that reason, so the server's ~97% figure isn't whole-server coverage.
-- **Coverage thresholds are enforced, not advisory** — 80% across statements/branches/functions/lines fails `npm run test:coverage` in both packages. `index.ts`, `app.ts`, `config/db.ts`, and `src/routes/**` are excluded on the server as boot wiring / untestable integration surface; the client excludes `main.tsx`.
+  - **Untested:** the route files (`auth.route.ts`, `chats.route.ts`, `gemini.chat.route.ts`, `projects.route.ts`, `uploads.route.ts`). Driving them needs `supertest` to dispatch through Express, which isn't installed — they're excluded from the coverage denominator for that reason, so the server's ~97% figure isn't whole-server coverage.
+- **Coverage thresholds are enforced, not advisory** — 80% across statements/branches/functions/lines fails `npm run test:coverage` in both packages. `index.ts`, `app.ts`, `config/db.ts`, `src/routes/**` and `src/scripts/**` are excluded on the server as boot wiring / untestable integration surface; the client excludes `main.tsx`.
 - **`app.ts` holds the Express app, `index.ts` only boots it** — the split exists so routes can be tested without binding a port, and it's also what a serverless host would need.
 - **No Vite proxy** — client calls the server's absolute origin, hence `5173` as the default CORS origin.
 

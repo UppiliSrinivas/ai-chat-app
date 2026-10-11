@@ -55,7 +55,7 @@ function describeDelete(pending: PendingDelete | null) {
   const chats = pending.chatCount === 1 ? '1 chat' : `${pending.chatCount} chats`
   return {
     title: `Delete "${pending.name}"?`,
-    body: `This permanently deletes the project and its ${chats}. This can't be undone.`,
+    body: `This permanently deletes the project, its ${chats} and its files. This can't be undone.`,
     confirmLabel: 'Delete project and chats',
   }
 }

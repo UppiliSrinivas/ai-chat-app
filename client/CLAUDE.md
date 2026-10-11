@@ -79,4 +79,6 @@ Chat UI is built: `App.tsx` (react-router), `pages/chat`, `pages/signin`, `compo
 
 Auth UI (Google + guest sign-in), the chat sidebar, and the `{ chatId, message }` + cookie rewiring are all done. Projects are named on creation and renameable; a project row expands to list its own chats, including a placeholder row for a chat that has been started but not yet sent (the chat is only created on the first message, so without it the click looks inert). Everything has colocated tests — both stores, all three `api/` modules, every component, `App.tsx`, and both pages.
 
+Attaching a file makes it a chat message. `Turn` in `useChatStore` is `TextTurn | FileTurn`; `attachFile` creates the chat if needed, uploads, and appends a `FileTurn`, which `components/message/FileMessage.tsx` renders as a card. Statuses live in `hooks/useUploadStore.ts`, keyed by chat, which polls `GET /uploads/:id` every 2s while a file is `processing`. `api/chats.ts` maps the server's flat messages to a `text | file` union; `api/uploads.ts` maps uploads to a union where only `failed` carries a `failureCode`, and `lib/uploadMessages.ts` turns those codes into sentences.
+
 All source is TypeScript; `tsconfig.json` exists.

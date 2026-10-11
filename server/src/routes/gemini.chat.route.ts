@@ -8,6 +8,7 @@ import {
   type HistoryTurn,
 } from "../lib/chat-request/chat-request.js";
 import {
+  toAttachmentNote,
   toFunctionResponseParts,
   toGeminiContents,
   toGeminiTools,
@@ -25,10 +26,11 @@ import {
   type ToolStatus,
 } from "../lib/sse/sse.js";
 import {
+  availableToolDeclarations,
   findTool,
-  toolDeclarations,
   type ToolContext,
 } from "../tools/registry.js";
+import { MAX_LISTED_FILES, toFilesInstruction } from "../lib/retrieval/retrieval.js";
 import { estimateTokens } from "../lib/tokens/tokens.js";
 import {
   messagesAfterSummary,
@@ -41,6 +43,7 @@ import {
 import { requireAuth } from "../middleware/requireAuth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 import { Chat, isValidObjectId } from "../models/Chat.js";
+import { Upload } from "../models/Upload.js";
 
 const router = Router();
 
@@ -209,9 +212,10 @@ router.post("/", async (req, res) => {
     return;
   }
 
+  // A file message has no text of its own; the model sees a note naming it.
   const storedMessages: SummaryMessage[] = chat.messages.map((entry) => ({
     role: entry.role,
-    content: entry.content,
+    content: entry.kind === "file" ? toAttachmentNote(entry.content) : entry.content,
     tokens: entry.tokens ?? undefined,
   }));
 
@@ -261,13 +265,30 @@ router.post("/", async (req, res) => {
   const contents = toGeminiContents({ message, history: priorTurns });
   const summaryText = summary?.text ?? "";
 
+  // Ready files only: a half-ingested one has nothing searchable yet.
+  const readyUploads = await Upload.find({ userId: chat.userId, chatId: chat._id, status: "ready" })
+    .sort({ createdAt: -1 })
+    .limit(MAX_LISTED_FILES)
+    .select("name")
+    .lean();
+  const hasFiles = readyUploads.length > 0;
+
+  // The summary is context, not a turn anyone took, and its guard text marks it
+  // as a record; the files note tells the model it can search before answering.
+  const systemInstruction = [
+    summaryText ? toSystemInstruction(summaryText) : null,
+    toFilesInstruction(readyUploads.map((upload) => upload.name)),
+  ]
+    .filter((part): part is string => part !== null)
+    .join("\n\n");
+
   let fullText = "";
   let promptTokens: number | undefined;
   let replyTokens: number | undefined;
 
   await streamSSE(res, async function* (abortSignal) {
     const conversation: Content[] = [...contents];
-    const tools = toGeminiTools(toolDeclarations);
+    const tools = toGeminiTools(availableToolDeclarations({ hasFiles }));
 
     try {
       for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
@@ -277,11 +298,7 @@ router.post("/", async (req, res) => {
           config: {
             abortSignal,
             tools,
-            // The summary is context, not a turn anyone took, and the guard text
-            // marks it as a record rather than something to act on.
-            ...(summaryText
-              ? { systemInstruction: toSystemInstruction(summaryText) }
-              : {}),
+            ...(systemInstruction ? { systemInstruction } : {}),
           },
         });
 
@@ -320,6 +337,7 @@ router.post("/", async (req, res) => {
 
         const outcomes = yield* runToolCalls(calls, {
           userId: ownerId,
+          chatId,
           signal: abortSignal,
         });
         conversation.push({

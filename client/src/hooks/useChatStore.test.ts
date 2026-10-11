@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_EDITS_PER_MESSAGE, useChatStore } from './useChatStore'
+import { MAX_EDITS_PER_MESSAGE, useChatStore, type TextTurn } from './useChatStore'
 import { useAuthStore } from './useAuthStore'
 import { createChat, deleteChat, getChat, listChats } from '../api/chats'
 import { listProjects } from '../api/projects'
 import { streamChat, type ToolActivity } from '../api/streamChat'
+import { uploadFile } from '../api/uploads'
+import { useUploadStore } from './useUploadStore'
+import { MAX_UPLOAD_BYTES } from '../lib/limits'
 
 vi.mock('../api/chats', () => ({
   createChat: vi.fn(),
@@ -14,6 +17,8 @@ vi.mock('../api/chats', () => ({
 
 vi.mock('../api/streamChat', () => ({ streamChat: vi.fn() }))
 
+vi.mock('../api/uploads', () => ({ uploadFile: vi.fn(), getUpload: vi.fn(), listUploads: vi.fn() }))
+
 // The store refreshes project chat counts after a chat is created or deleted;
 // stubbing the API keeps that off the network.
 vi.mock('../api/projects', () => ({
@@ -22,6 +27,13 @@ vi.mock('../api/projects', () => ({
   listProjects: vi.fn().mockResolvedValue([]),
   renameProject: vi.fn(),
 }))
+
+/** The nth turn, asserted to be a text turn so its edits and replies can be read. */
+const textTurn = (index = 0): TextTurn => {
+  const turn = useChatStore.getState().turns[index]
+  if (turn?.kind !== 'text') throw new Error(`turn ${index} is not a text turn`)
+  return turn
+}
 
 const initialState = {
   turns: [],
@@ -84,10 +96,9 @@ describe('sendMessage', () => {
 
     await useChatStore.getState().sendMessage('hello')
 
-    const { turns } = useChatStore.getState()
-    expect(turns).toHaveLength(1)
-    expect(turns[0].edits).toEqual(['hello'])
-    expect(turns[0].responses).toEqual(['Hi there'])
+    expect(useChatStore.getState().turns).toHaveLength(1)
+    expect(textTurn().edits).toEqual(['hello'])
+    expect(textTurn().responses).toEqual(['Hi there'])
   })
 
   it('creates the chat lazily on the first send only', async () => {
@@ -127,7 +138,7 @@ describe('sendMessage', () => {
 
     await useChatStore.getState().sendMessage('hello')
 
-    expect(useChatStore.getState().turns[0].responses[0]).toBe('partial answer')
+    expect(textTurn().responses[0]).toBe('partial answer')
   })
 
   it('ignores a send while another stream is in flight', async () => {
@@ -161,7 +172,7 @@ describe('editMessage', () => {
 
     await useChatStore.getState().editMessage(turnId, 'edited')
 
-    const turn = useChatStore.getState().turns[0]
+    const turn = textTurn()
     expect(turn.edits).toEqual(['original', 'edited'])
     expect(turn.activeEditIndex).toBe(1)
   })
@@ -183,7 +194,7 @@ describe('editMessage', () => {
       await useChatStore.getState().editMessage(turnId, `edit-${i}`)
     }
 
-    expect(useChatStore.getState().turns[0].edits.length).toBeLessThanOrEqual(MAX_EDITS_PER_MESSAGE + 1)
+    expect(textTurn().edits.length).toBeLessThanOrEqual(MAX_EDITS_PER_MESSAGE + 1)
   })
 })
 
@@ -194,16 +205,16 @@ describe('navigateEdit', () => {
     await useChatStore.getState().editMessage(turnId, 'edited')
 
     useChatStore.getState().navigateEdit(turnId, 'prev')
-    expect(useChatStore.getState().turns[0].activeEditIndex).toBe(0)
+    expect(textTurn().activeEditIndex).toBe(0)
 
     useChatStore.getState().navigateEdit(turnId, 'prev')
-    expect(useChatStore.getState().turns[0].activeEditIndex).toBe(0)
+    expect(textTurn().activeEditIndex).toBe(0)
 
     useChatStore.getState().navigateEdit(turnId, 'next')
-    expect(useChatStore.getState().turns[0].activeEditIndex).toBe(1)
+    expect(textTurn().activeEditIndex).toBe(1)
 
     useChatStore.getState().navigateEdit(turnId, 'next')
-    expect(useChatStore.getState().turns[0].activeEditIndex).toBe(1)
+    expect(textTurn().activeEditIndex).toBe(1)
   })
 })
 
@@ -216,10 +227,10 @@ describe('selectChat', () => {
       messageCount: 4, tokenCount: 0,
       updatedAt: '',
       messages: [
-        { role: 'user', content: 'q1' },
-        { role: 'assistant', content: 'a1' },
-        { role: 'user', content: 'q2' },
-        { role: 'assistant', content: 'a2' },
+        { kind: 'text', role: 'user', content: 'q1' },
+        { kind: 'text', role: 'assistant', content: 'a1' },
+        { kind: 'text', role: 'user', content: 'q2' },
+        { kind: 'text', role: 'assistant', content: 'a2' },
       ],
     })
 
@@ -227,7 +238,7 @@ describe('selectChat', () => {
 
     const { turns, chatId } = useChatStore.getState()
     expect(chatId).toBe('chat-9')
-    expect(turns.map((turn) => [turn.edits[0], turn.responses[0]])).toEqual([
+    expect(turns.filter((turn): turn is TextTurn => turn.kind === 'text').map((turn) => [turn.edits[0], turn.responses[0]])).toEqual([
       ['q1', 'a1'],
       ['q2', 'a2'],
     ])
@@ -240,12 +251,12 @@ describe('selectChat', () => {
       projectId: null,
       messageCount: 1, tokenCount: 0,
       updatedAt: '',
-      messages: [{ role: 'user', content: 'unanswered' }],
+      messages: [{ kind: 'text', role: 'user', content: 'unanswered' }],
     })
 
     await useChatStore.getState().selectChat('chat-9')
 
-    expect(useChatStore.getState().turns[0].responses).toEqual([''])
+    expect(textTurn().responses).toEqual([''])
   })
 
   it('records an error when the chat cannot be loaded', async () => {
@@ -275,7 +286,7 @@ describe('selectChat', () => {
 
 describe('startNewChat', () => {
   it('clears the open chat so the next send creates a fresh one', () => {
-    useChatStore.setState({ chatId: 'chat-1', turns: [{ id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }] })
+    useChatStore.setState({ chatId: 'chat-1', turns: [{ kind: 'text' as const, id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }] })
 
     useChatStore.getState().startNewChat()
 
@@ -361,7 +372,7 @@ describe('deleteChat', () => {
   it('also clears the view when the deleted chat was the open one', async () => {
     useChatStore.setState({
       chatId: 'a',
-      turns: [{ id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
+      turns: [{ kind: 'text' as const, id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
       chats: [{ id: 'a', title: 'A', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '' }],
     })
     vi.mocked(deleteChat).mockResolvedValue(undefined)
@@ -400,7 +411,7 @@ describe('reset', () => {
   it('clears everything so the next user sees no trace of the previous session', () => {
     useChatStore.setState({
       chatId: 'a',
-      turns: [{ id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
+      turns: [{ kind: 'text' as const, id: 't', edits: ['x'], responses: ['y'], activeEditIndex: 0 }],
       chats: [{ id: 'a', title: 'A', projectId: null, messageCount: 0, tokenCount: 0, updatedAt: '' }],
       error: 'stale',
       isStreaming: true,
@@ -466,5 +477,111 @@ describe('tool activity', () => {
     await useChatStore.getState().sendMessage('weather?')
 
     expect(useChatStore.getState().activeTools).toEqual([])
+  })
+})
+
+describe('file turns', () => {
+  const readyUpload = { id: 'u1', name: 'cv.pdf', sizeBytes: 1024, createdAt: '', status: 'ready' as const, chunkCount: 2 }
+  const pdf = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
+
+  beforeEach(() => {
+    useUploadStore.getState().reset()
+    vi.mocked(uploadFile).mockResolvedValue(readyUpload)
+  })
+
+  it('loads a saved file message as a file turn, pairing the reply with the question after it', async () => {
+    vi.mocked(getChat).mockResolvedValue({
+      id: 'chat-9',
+      title: 'cv.pdf',
+      projectId: null,
+      messageCount: 3,
+      tokenCount: 0,
+      updatedAt: '',
+      messages: [
+        { kind: 'file', uploadId: 'u1', name: 'cv.pdf' },
+        { kind: 'text', role: 'user', content: 'Summarize it' },
+        { kind: 'text', role: 'assistant', content: 'A full-stack CV.' },
+      ],
+    })
+
+    await useChatStore.getState().selectChat('chat-9')
+
+    const [file, question] = useChatStore.getState().turns
+    expect(file).toMatchObject({ kind: 'file', uploadId: 'u1', name: 'cv.pdf' })
+    expect(question).toMatchObject({ kind: 'text', edits: ['Summarize it'], responses: ['A full-stack CV.'] })
+  })
+
+  // A file can open a conversation, so the chat has to exist before the upload.
+  it('creates the chat first, then uploads the file into it', async () => {
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(createChat).toHaveBeenCalledOnce()
+    expect(uploadFile).toHaveBeenCalledExactlyOnceWith('chat-1', pdf)
+    expect(useChatStore.getState().turns).toEqual([
+      { kind: 'file', id: expect.any(String), uploadId: 'u1', name: 'cv.pdf' },
+    ])
+  })
+
+  it('hands the upload to the upload store so its status is tracked', async () => {
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(useUploadStore.getState().uploadsByChat['chat-1']).toEqual([readyUpload])
+  })
+
+  it('refreshes the chat list, since a file can title a new chat', async () => {
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(listChats).toHaveBeenCalled()
+  })
+
+  it('refuses an oversized file without creating a chat or uploading', async () => {
+    const huge = new File([new Uint8Array(MAX_UPLOAD_BYTES + 1)], 'huge.pdf')
+
+    await useChatStore.getState().attachFile(huge)
+
+    expect(createChat).not.toHaveBeenCalled()
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(useChatStore.getState().error).toMatch(/huge\.pdf/)
+  })
+
+  it("shows the server's reason when the upload is refused", async () => {
+    vi.mocked(uploadFile).mockRejectedValue(new Error('A chat can hold 10 files.'))
+
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(useChatStore.getState().error).toBe('A chat can hold 10 files.')
+    expect(useChatStore.getState().turns).toEqual([])
+  })
+
+  it('does nothing while a reply is streaming', async () => {
+    useChatStore.setState({ isStreaming: true })
+
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(uploadFile).not.toHaveBeenCalled()
+  })
+
+  // The upload still belongs to its chat; it just mustn't appear in this one.
+  it('does not add the file to a different chat the user switched to', async () => {
+    useChatStore.setState({ chatId: 'chat-1' })
+    vi.mocked(uploadFile).mockImplementation(async () => {
+      useChatStore.setState({ chatId: 'chat-2', turns: [] })
+      return readyUpload
+    })
+
+    await useChatStore.getState().attachFile(pdf)
+
+    expect(useChatStore.getState().turns).toEqual([])
+  })
+
+  it('ignores an edit aimed at a file turn', async () => {
+    const fileTurn = { kind: 'file' as const, id: 'f', uploadId: 'u1', name: 'cv.pdf' }
+    useChatStore.setState({ chatId: 'chat-1', turns: [fileTurn] })
+
+    await useChatStore.getState().editMessage('f', 'new text')
+    useChatStore.getState().navigateEdit('f', 'next')
+
+    expect(useChatStore.getState().turns).toEqual([fileTurn])
+    expect(streamChat).not.toHaveBeenCalled()
   })
 })

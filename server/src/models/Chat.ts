@@ -11,6 +11,26 @@ import { Schema, model, Types, type InferSchemaType } from "mongoose";
 const messageSchema = new Schema(
   {
     role: { type: String, enum: ["user", "assistant"], required: true },
+    // A file message's content is the file name. Existing messages default to
+    // "text", so no migration was needed.
+    kind: {
+      type: String,
+      enum: ["text", "file"],
+      default: "text",
+      validate: {
+        validator: function (this: { role?: string }, kind: string) {
+          return kind !== "file" || this.role === "user";
+        },
+        message: "Only the user can attach a file.",
+      },
+    },
+    uploadId: {
+      type: Schema.Types.ObjectId,
+      ref: "Upload",
+      required: function (this: { kind?: string }) {
+        return this.kind === "file";
+      },
+    },
     content: { type: String, required: true },
     // Exact for assistant turns, which the API prices for us; estimated for
     // user turns, which nothing can price before they are sent.

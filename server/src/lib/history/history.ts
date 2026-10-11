@@ -17,12 +17,31 @@ const withCurrentMessage = ({ message, history }: ChatRequest): HistoryTurn[] =>
   { role: "user", content: message },
 ];
 
+/** How a file message reads to the model: it has no text, only a name to search for. */
+export const toAttachmentNote = (fileName: string): string => `[Attached file: ${fileName}]`;
+
+/** A file message followed by a question makes two user turns in a row; one turn with both parts is safer. */
+const mergeSameRole = (contents: Content[]): Content[] => {
+  const merged: Content[] = [];
+  for (const content of contents) {
+    const previous = merged.at(-1);
+    if (previous && previous.role === content.role) {
+      previous.parts = [...(previous.parts ?? []), ...(content.parts ?? [])];
+    } else {
+      merged.push({ ...content, parts: [...(content.parts ?? [])] });
+    }
+  }
+  return merged;
+};
+
 /** Gemini names the model's own turns "model", not "assistant". */
 export const toGeminiContents = (request: ChatRequest): Content[] =>
-  withCurrentMessage(request).map((turn) => ({
-    role: turn.role === "assistant" ? "model" : "user",
-    parts: [{ text: turn.content }],
-  }));
+  mergeSameRole(
+    withCurrentMessage(request).map((turn) => ({
+      role: turn.role === "assistant" ? "model" : "user",
+      parts: [{ text: turn.content }],
+    })),
+  );
 
 /** Gemini takes plain JSON Schema in `parametersJsonSchema`, so the neutral
  *  declarations need rewrapping rather than translating. */
