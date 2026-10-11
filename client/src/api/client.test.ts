@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { API_BASE_URL, apiFetch } from './client'
+import { API_BASE_URL, ApiError, apiFetch } from './client'
 
 const mockFetch = (impl: (...args: unknown[]) => unknown) => {
   vi.stubGlobal('fetch', vi.fn(impl))
@@ -70,6 +70,48 @@ describe('apiFetch', () => {
     expect(fetch).toHaveBeenCalledWith(
       `${API_BASE_URL}/chats`,
       expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }),
+    )
+  })
+
+  it('keeps the server error code next to its message', async () => {
+    mockFetch(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({ message: 'You can add 10 files here.', code: 'UPLOADS_FULL' }),
+    }))
+
+    const error = await apiFetch('/uploads').catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({ message: 'You can add 10 files here.', status: 409, code: 'UPLOADS_FULL' })
+  })
+
+  it('leaves the code null when the server sent none', async () => {
+    mockFetch(async () => ({ ok: false, status: 404, json: async () => ({ message: 'Not found.' }) }))
+
+    await expect(apiFetch('/chats/x')).rejects.toMatchObject({ code: null })
+  })
+
+  // The browser has to write the multipart header itself, boundary included.
+  it('sends no JSON content-type with a file upload', async () => {
+    mockFetch(async () => ({ ok: true, status: 202, json: async () => ({}) }))
+
+    await apiFetch('/uploads', { method: 'POST', body: new FormData() })
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+    expect(init.headers).not.toHaveProperty('Content-Type')
+  })
+
+  it('merges caller headers with the JSON content-type rather than replacing it', async () => {
+    mockFetch(async () => ({ ok: true, status: 200, json: async () => ({}) }))
+
+    await apiFetch('/chats', { headers: { 'X-Client': 'web' } })
+
+    expect(fetch).toHaveBeenCalledWith(
+      `${API_BASE_URL}/chats`,
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json', 'X-Client': 'web' },
+      }),
     )
   })
 })
