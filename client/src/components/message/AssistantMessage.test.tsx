@@ -20,6 +20,13 @@ describe('AssistantMessage', () => {
     expect(screen.getByText('The answer')).toBeInTheDocument()
   })
 
+  // The markdown renderer loads on demand; until then the plain text stands in.
+  it('renders markdown once the renderer has loaded', async () => {
+    setup({ content: 'Some **bold** text' })
+
+    expect(await screen.findByText('bold', { selector: 'strong' })).toBeInTheDocument()
+  })
+
   it('hides the action row while the response is still streaming', () => {
     setup({ isStreaming: true })
 

@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { Check, Copy, Share2, ThumbsDown, ThumbsUp, X } from 'lucide-react'
-import MarkdownContent from './MarkdownContent'
 import type { ToolActivity } from '../../api/streamChat'
+
+// Markdown and syntax highlighting are most of the bundle, and an empty chat
+// needs neither, so they load on the first reply rather than on page load.
+const MarkdownContent = lazy(() => import('./MarkdownContent'))
 
 export type AssistantMessageProps = {
   content: string
@@ -12,6 +15,11 @@ export type AssistantMessageProps = {
 }
 
 const COPIED_RESET_DELAY_MS = 1500
+
+/** What the reply looks like while the markdown renderer is still loading. */
+function PlainReply({ content }: { content: string }) {
+  return <div className="text-[15px] leading-6 break-words whitespace-pre-wrap text-zinc-100">{content}</div>
+}
 
 function ToolStatusIcon({ status }: { status: ToolActivity['status'] }) {
   if (status === 'done') return <Check size={13} className="shrink-0 text-zinc-500" />
@@ -83,7 +91,9 @@ export default function AssistantMessage({
 
       {!isWaitingForFirstToken && (
         <div className="flex flex-wrap items-end">
-          <MarkdownContent content={content} />
+          <Suspense fallback={<PlainReply content={content} />}>
+            <MarkdownContent content={content} />
+          </Suspense>
           {isStreaming && (
             <span className="mb-1 ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-zinc-300" />
           )}
