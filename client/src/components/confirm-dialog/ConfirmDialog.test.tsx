@@ -96,4 +96,29 @@ describe('ConfirmDialog', () => {
     expect(parent.querySelector('[role="dialog"]')).toBeNull()
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
   })
+
+  // The parent hands over a fresh onCancel on every render; Escape must reach the latest one.
+  it('calls the newest onCancel after the parent re-renders', async () => {
+    const firstCancel = vi.fn()
+    const latestCancel = vi.fn()
+    const props = { isOpen: true, title: 'Delete?', body: 'Gone for good.', onConfirm: vi.fn() }
+    const { rerender } = render(<ConfirmDialog {...props} onCancel={firstCancel} />)
+
+    rerender(<ConfirmDialog {...props} onCancel={latestCancel} />)
+    await userEvent.setup().keyboard('{Escape}')
+
+    expect(firstCancel).not.toHaveBeenCalled()
+    expect(latestCancel).toHaveBeenCalledOnce()
+  })
+
+  it('stops listening for Escape once closed', async () => {
+    const onCancel = vi.fn()
+    const props = { title: 'Delete?', body: 'Gone for good.', onConfirm: vi.fn(), onCancel }
+    const { rerender } = render(<ConfirmDialog isOpen {...props} />)
+
+    rerender(<ConfirmDialog isOpen={false} {...props} />)
+    await userEvent.setup().keyboard('{Escape}')
+
+    expect(onCancel).not.toHaveBeenCalled()
+  })
 })

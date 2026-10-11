@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Activity, useEffect } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import ChatPage from './pages/chat'
 import Loader from './components/loader/Loader'
@@ -42,13 +42,20 @@ export default function App() {
   // gets the chat, and their guest account is created on the first message. A
   // guest mid-upgrade keeps that cookie, which is what lets the server link
   // the new identity to their existing chats.
-  if (isUpgrading) return <SignInPage />
+  // The chat stays mounted but hidden meanwhile, so backing out of sign-in
+  // returns to the same draft and scroll position instead of a fresh page.
+  const chatVisibility = isUpgrading ? 'hidden' : 'visible'
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route index element={<ChatPage />} />
-      </Routes>
-    </BrowserRouter>
+    <>
+      {isUpgrading && <SignInPage />}
+      <Activity mode={chatVisibility}>
+        <BrowserRouter>
+          <Routes>
+            <Route index element={<ChatPage />} />
+          </Routes>
+        </BrowserRouter>
+      </Activity>
+    </>
   )
 }

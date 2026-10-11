@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
-vi.mock('./pages/chat', () => ({ default: () => <div>chat page</div> }))
+vi.mock('./pages/chat', () => ({
+  default: () => (
+    <div>
+      chat page
+      <input aria-label="Draft" />
+    </div>
+  ),
+}))
 vi.mock('./pages/signin', () => ({ default: () => <div>sign in page</div> }))
 
 const { useAuthStore } = await import('./hooks/useAuthStore')
@@ -74,7 +82,21 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByText('sign in page')).toBeInTheDocument()
-    expect(screen.queryByText('chat page')).toBeNull()
+    expect(screen.getByText('chat page')).not.toBeVisible()
+  })
+
+  // Backing out of sign-in used to remount the chat page and lose what was typed.
+  it('keeps the half-written draft through a trip to sign-in and back', async () => {
+    useAuthStore.setState({ status: 'signedIn', isUpgrading: false })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByRole('textbox', { name: 'Draft' }), 'half-written')
+    act(() => useAuthStore.getState().startUpgrade())
+    act(() => useAuthStore.getState().cancelUpgrade())
+
+    expect(screen.getByRole('textbox', { name: 'Draft' })).toHaveValue('half-written')
+    expect(screen.queryByText('sign in page')).toBeNull()
   })
 
   it('clears the previous session chats on sign out', () => {

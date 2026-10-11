@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 export type ConfirmDialogProps = {
@@ -26,16 +26,19 @@ export default function ConfirmDialog({
     if (isOpen) cancelRef.current?.focus()
   }, [isOpen])
 
+  // Parents pass a fresh onCancel on every render; reading it through an effect
+  // event keeps the listener from being torn down and re-added each time.
+  const cancelOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') onCancel()
+  })
+
   useEffect(() => {
     if (!isOpen) return
 
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel()
-    }
-
+    const handleKey = (event: KeyboardEvent) => cancelOnEscape(event)
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isOpen, onCancel])
+  }, [isOpen])
 
   if (!isOpen) return null
 

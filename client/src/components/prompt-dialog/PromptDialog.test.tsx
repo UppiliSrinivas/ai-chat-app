@@ -139,4 +139,18 @@ describe('PromptDialog', () => {
     expect(parent.querySelector('[role="dialog"]')).toBeNull()
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
   })
+
+  // The parent hands over a fresh onCancel on every render; Escape must reach the latest one.
+  it('calls the newest onCancel after the parent re-renders', async () => {
+    const firstCancel = vi.fn()
+    const latestCancel = vi.fn()
+    const props = { isOpen: true, title: 'Rename', label: 'Project name', onSubmit: vi.fn() }
+    const { rerender } = render(<PromptDialog {...props} onCancel={firstCancel} />)
+
+    rerender(<PromptDialog {...props} onCancel={latestCancel} />)
+    await userEvent.setup().keyboard('{Escape}')
+
+    expect(firstCancel).not.toHaveBeenCalled()
+    expect(latestCancel).toHaveBeenCalledOnce()
+  })
 })

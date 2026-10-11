@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AssistantMessage, { type AssistantMessageProps } from './AssistantMessage'
@@ -9,6 +9,12 @@ const setup = (props: Partial<AssistantMessageProps> = {}) => {
   return { ...handlers, ...view, user: userEvent.setup() }
 }
 
+// The renderer is lazy-loaded; importing it once here means the component's own
+// import finds it cached, instead of racing a cold load in a busy test run.
+beforeAll(async () => {
+  await import('./MarkdownContent')
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -18,6 +24,13 @@ describe('AssistantMessage', () => {
     setup()
 
     expect(screen.getByText('The answer')).toBeInTheDocument()
+  })
+
+  // The markdown renderer loads on demand; until then the plain text stands in.
+  it('renders markdown once the renderer has loaded', async () => {
+    setup({ content: 'Some **bold** text' })
+
+    expect(await screen.findByText('bold', { selector: 'strong' })).toBeInTheDocument()
   })
 
   it('hides the action row while the response is still streaming', () => {
